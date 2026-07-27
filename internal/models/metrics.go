@@ -17,3 +17,9 @@ type Metric struct {
 	Value *float64   `json:"value,omitempty"`
 	Hash  string     `json:"hash,omitempty"`
 }
+
+// Ptr returns a pointer to the given value. Useful for creating pointer
+// literals for Metric.Value and Metric.Delta fields.
+func Ptr[T any](v T) *T {
+	return &v
+}
