@@ -27,8 +27,6 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 			if existing.Delta == nil {
 				return errors.New("existing counter metric has nil delta")
 			}
-			// Accumulate into a new local variable to avoid mutating
-			// the caller's pointer (side-effect bug).
 			accumulated := *existing.Delta + *metric.Delta
 			metric.Delta = &accumulated
 		}
@@ -39,6 +37,22 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 	}
 
 	return nil
+}
+
+func (ms MemStorage) FetchAll() []models.Metric {
+	result := make([]models.Metric, 0, 30)
+	for _, metric := range ms.metrics {
+		result = append(result, metric)
+	}
+	return result
+}
+
+func (ms MemStorage) Fetch(name string) (models.Metric, error) {
+	if value, ok := ms.metrics[name]; ok {
+		return value, nil
+	} else {
+		return models.Metric{}, errors.New("metric not found")
+	}
 }
 
 func NewMemStorage() *MemStorage {
