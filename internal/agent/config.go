@@ -13,6 +13,6 @@ func DefaultConfig() Config {
 	return Config{
 		PollInterval:   2 * time.Second,
 		ReportInterval: 10 * time.Second,
-		ServerAddr:     "http://localhost:8080",
+		ServerAddr:     "localhost:8080",
 	}
 }
