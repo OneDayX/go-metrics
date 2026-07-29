@@ -17,6 +17,7 @@ func main() {
 
 func run() error {
 	cfg := agent.DefaultConfig()
+	cfg.ParseFlags()
 
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)
