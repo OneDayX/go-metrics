@@ -22,12 +22,10 @@ func run() error {
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)
 
-	// Poll ticker: collects runtime metrics at pollInterval.
-	pollTicker := time.NewTicker(cfg.PollInterval)
+	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
 	defer pollTicker.Stop()
 
-	// Report ticker: sends metrics to the server at reportInterval.
-	reportTicker := time.NewTicker(cfg.ReportInterval)
+	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
 	defer reportTicker.Stop()
 
 	// Perform an immediate first poll so we have data ready.
