@@ -41,6 +41,14 @@ func (s *MetricService) Update(metric models.Metric) error {
 	return s.storage.Update(metric)
 }
 
+func (s *MetricService) Fetch(ID string) (models.Metric, error) {
+	return s.storage.Fetch(ID)
+}
+
+func (s *MetricService) FetchAll() []models.Metric {
+	return s.storage.FetchAll()
+}
+
 func (m *MetricService) Collect() {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

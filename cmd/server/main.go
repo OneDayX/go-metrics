@@ -21,6 +21,8 @@ func run() error {
 
 	r := chi.NewRouter()
 	r.Post("/update/{type}/{name}/{value}", handler.UpdateHandler(svc)) // POST /update/gauge/Alloc/1
+	r.Get("/", handler.ListHandler(svc))                                // GET /
+	r.Get("/value/{type}/{name}", handler.GetHandler(svc))              // GET /value/gauge/Alloc
 
 	return http.ListenAndServe("localhost:8080", r)
 }

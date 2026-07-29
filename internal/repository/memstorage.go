@@ -47,8 +47,8 @@ func (ms MemStorage) FetchAll() []models.Metric {
 	return result
 }
 
-func (ms MemStorage) Fetch(name string) (models.Metric, error) {
-	if value, ok := ms.metrics[name]; ok {
+func (ms MemStorage) Fetch(ID string) (models.Metric, error) {
+	if value, ok := ms.metrics[ID]; ok {
 		return value, nil
 	} else {
 		return models.Metric{}, errors.New("metric not found")
