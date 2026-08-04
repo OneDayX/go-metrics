@@ -39,7 +39,7 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 	return nil
 }
 
-func (ms MemStorage) FetchAll() []models.Metric {
+func (ms *MemStorage) FetchAll() []models.Metric {
 	result := make([]models.Metric, 0, 30)
 	for _, metric := range ms.metrics {
 		result = append(result, metric)
@@ -47,7 +47,7 @@ func (ms MemStorage) FetchAll() []models.Metric {
 	return result
 }
 
-func (ms MemStorage) Fetch(ID string) (models.Metric, error) {
+func (ms *MemStorage) Fetch(ID string) (models.Metric, error) {
 	if value, ok := ms.metrics[ID]; ok {
 		return value, nil
 	} else {

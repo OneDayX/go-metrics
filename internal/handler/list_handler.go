@@ -1,11 +1,10 @@
 package handler
 
 import (
+	"html/template"
 	"net/http"
-	"text/template"
 
 	"github.com/OneDayX/go-metrics/internal/models"
-	"github.com/OneDayX/go-metrics/internal/service"
 )
 
 const listTpl = `
@@ -27,11 +26,15 @@ const listTpl = `
 	</body>
 </html>`
 
-func ListHandler(svc *service.MetricService) http.HandlerFunc {
+type metricLister interface {
+	FetchAll() []models.Metric
+}
+
+func ListHandler(svc metricLister) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t, err := template.New("homepage").Parse(listTpl)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
@@ -44,7 +47,7 @@ func ListHandler(svc *service.MetricService) http.HandlerFunc {
 		err = t.Execute(w, metrics)
 
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 

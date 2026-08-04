@@ -103,7 +103,7 @@ func TestMemStorage_FetchAll(t *testing.T) {
 				metrics: tt.fields.metrics,
 			}
 
-			assert.Equal(t, tt.wantMetrics, ms.FetchAll())
+			assert.ElementsMatch(t, tt.wantMetrics, ms.FetchAll())
 		})
 	}
 }

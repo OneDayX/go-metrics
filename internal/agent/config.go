@@ -10,17 +10,17 @@ type Config struct {
 	ServerAddr     string
 }
 
-func DefaultConfig() Config {
-	return Config{
+func GetConfig() Config {
+	cfg := Config{
 		PollInterval:   2,
 		ReportInterval: 10,
 		ServerAddr:     "localhost:8080",
 	}
-}
 
-func (c *Config) ParseFlags() {
-	flag.StringVar(&c.ServerAddr, "a", c.ServerAddr, "server address (host:port)")
-	flag.Int64Var(&c.PollInterval, "p", c.PollInterval, "poll interval in seconds")
-	flag.Int64Var(&c.ReportInterval, "r", c.ReportInterval, "report interval in seconds")
+	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
+	flag.Int64Var(&cfg.PollInterval, "p", cfg.PollInterval, "poll interval in seconds")
+	flag.Int64Var(&cfg.ReportInterval, "r", cfg.ReportInterval, "report interval in seconds")
 	flag.Parse()
+
+	return cfg
 }

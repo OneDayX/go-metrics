@@ -4,22 +4,11 @@ import (
 	"errors"
 	"math/rand/v2"
 	"net/http"
-	"reflect"
 	"runtime"
 	"strconv"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 )
-
-// runtimeMetricNames lists the runtime.MemStats gauge metric names collected by Collect().
-var runtimeMetricNames = []string{
-	"Alloc", "BuckHashSys", "Frees", "GCCPUFraction", "GCSys",
-	"HeapAlloc", "HeapIdle", "HeapInuse", "HeapObjects", "HeapReleased",
-	"HeapSys", "LastGC", "Lookups", "MCacheInuse", "MCacheSys",
-	"MSpanInuse", "MSpanSys", "Mallocs", "NextGC", "NumForcedGC",
-	"NumGC", "OtherSys", "PauseTotalNs", "StackInuse", "StackSys",
-	"Sys", "TotalAlloc",
-}
 
 type storager interface {
 	Update(metric models.Metric) error
@@ -28,7 +17,8 @@ type storager interface {
 }
 
 type MetricService struct {
-	storage storager
+	storage       storager
+	lastPollCount int64
 }
 
 func NewMetricService(storage storager) *MetricService {
@@ -49,27 +39,57 @@ func (s *MetricService) FetchAll() []models.Metric {
 	return s.storage.FetchAll()
 }
 
-func (m *MetricService) Collect() {
+func (m *MetricService) Collect() error {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
-	v := reflect.ValueOf(&memStats).Elem()
-	for _, name := range runtimeMetricNames {
-		field := v.FieldByName(name)
-		var value float64
-		switch field.Kind() {
-		case reflect.Float64:
-			value = field.Float()
-		case reflect.Uint64, reflect.Uint32:
-			value = float64(field.Uint())
-		default:
-			value = float64(field.Int())
-		}
-		m.Update(models.Metric{ID: name, MType: models.MetricTypeGauge, Value: models.Ptr(value)})
+	gauges := []struct {
+		name  string
+		value float64
+	}{
+		{"Alloc", float64(memStats.Alloc)},
+		{"BuckHashSys", float64(memStats.BuckHashSys)},
+		{"Frees", float64(memStats.Frees)},
+		{"GCCPUFraction", memStats.GCCPUFraction},
+		{"GCSys", float64(memStats.GCSys)},
+		{"HeapAlloc", float64(memStats.HeapAlloc)},
+		{"HeapIdle", float64(memStats.HeapIdle)},
+		{"HeapInuse", float64(memStats.HeapInuse)},
+		{"HeapObjects", float64(memStats.HeapObjects)},
+		{"HeapReleased", float64(memStats.HeapReleased)},
+		{"HeapSys", float64(memStats.HeapSys)},
+		{"LastGC", float64(memStats.LastGC)},
+		{"Lookups", float64(memStats.Lookups)},
+		{"MCacheInuse", float64(memStats.MCacheInuse)},
+		{"MCacheSys", float64(memStats.MCacheSys)},
+		{"MSpanInuse", float64(memStats.MSpanInuse)},
+		{"MSpanSys", float64(memStats.MSpanSys)},
+		{"Mallocs", float64(memStats.Mallocs)},
+		{"NextGC", float64(memStats.NextGC)},
+		{"NumForcedGC", float64(memStats.NumForcedGC)},
+		{"NumGC", float64(memStats.NumGC)},
+		{"OtherSys", float64(memStats.OtherSys)},
+		{"PauseTotalNs", float64(memStats.PauseTotalNs)},
+		{"StackInuse", float64(memStats.StackInuse)},
+		{"StackSys", float64(memStats.StackSys)},
+		{"Sys", float64(memStats.Sys)},
+		{"TotalAlloc", float64(memStats.TotalAlloc)},
 	}
 
-	m.Update(models.Metric{ID: "RandomValue", MType: models.MetricTypeGauge, Value: models.Ptr(rand.Float64())})
-	m.Update(models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))})
+	for _, g := range gauges {
+		if err := m.Update(models.Metric{ID: g.name, MType: models.MetricTypeGauge, Value: models.Ptr(g.value)}); err != nil {
+			return err
+		}
+	}
+
+	if err := m.Update(models.Metric{ID: "RandomValue", MType: models.MetricTypeGauge, Value: models.Ptr(rand.Float64())}); err != nil {
+		return err
+	}
+	if err := m.Update(models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *MetricService) Send(host string) error {
@@ -84,22 +104,30 @@ func (m *MetricService) Send(host string) error {
 		case models.MetricTypeGauge:
 			url = "http://" + host + "/update/gauge/" + metric.ID + "/" + strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 		case models.MetricTypeCounter:
-			url = "http://" + host + "/update/counter/" + metric.ID + "/" + strconv.FormatInt(*metric.Delta, 10)
+			// Send only the delta accumulated since the last poll
+			delta := *metric.Delta - m.lastPollCount
+			m.lastPollCount = *metric.Delta
+			url = "http://" + host + "/update/counter/" + metric.ID + "/" + strconv.FormatInt(delta, 10)
 		}
 
 		req, err := http.NewRequest(http.MethodPost, url, nil)
 		if err != nil {
 			return err
 		}
+		req.Header.Set("Content-Type", "text/plain")
 
 		resp, err := client.Do(req)
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			return errors.New("failed to send metric")
+		}
+
+		if err := resp.Body.Close(); err != nil {
+			return err
 		}
 	}
 

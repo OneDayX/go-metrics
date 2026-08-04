@@ -14,9 +14,6 @@ import (
 )
 
 func TestUpdateHandler(t *testing.T) {
-	storage := repository.NewMemStorage()
-	svc := service.NewMetricService(storage)
-
 	type want struct {
 		code int
 		body string
@@ -62,6 +59,9 @@ func TestUpdateHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			storage := repository.NewMemStorage()
+			svc := service.NewMetricService(storage)
+
 			r := httptest.NewRequest(tc.method, tc.path, nil)
 
 			chiCtx := chi.NewRouteContext()

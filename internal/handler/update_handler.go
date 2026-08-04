@@ -5,13 +5,16 @@ import (
 	"strconv"
 
 	"github.com/OneDayX/go-metrics/internal/models"
-	"github.com/OneDayX/go-metrics/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
+type metricUpdater interface {
+	Update(metric models.Metric) error
+}
+
 // UpdateHandler returns an HTTP handler that updates a metric from URL parameters.
 // URL pattern: POST /update/{type}/{name}/{value}
-func UpdateHandler(svc *service.MetricService) http.HandlerFunc {
+func UpdateHandler(svc metricUpdater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		metricType := chi.URLParam(r, "type")
 		metricName := chi.URLParam(r, "name")

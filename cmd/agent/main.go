@@ -16,8 +16,7 @@ func main() {
 }
 
 func run() error {
-	cfg := agent.DefaultConfig()
-	cfg.ParseFlags()
+	cfg := agent.GetConfig()
 
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)
@@ -29,12 +28,16 @@ func run() error {
 	defer reportTicker.Stop()
 
 	// Perform an immediate first poll so we have data ready.
-	svc.Collect()
+	if err := svc.Collect(); err != nil {
+		return err
+	}
 
 	for {
 		select {
 		case <-pollTicker.C:
-			svc.Collect()
+			if err := svc.Collect(); err != nil {
+				log.Printf("error collecting metrics: %v", err)
+			}
 
 		case <-reportTicker.C:
 			if err := svc.Send(cfg.ServerAddr); err != nil {

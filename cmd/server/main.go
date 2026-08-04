@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/OneDayX/go-metrics/internal/handler"
@@ -12,13 +13,12 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
 
 func run() error {
-	cfg := server.DefaultConfig()
-	cfg.ParseFlags()
+	cfg := server.GetConfig()
 
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)

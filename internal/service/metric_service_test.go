@@ -72,9 +72,10 @@ func TestMetricService_Collect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := NewMetricService(repository.NewMemStorage())
-			m.Collect()
+			err := m.Collect()
+			assert.NoError(t, err)
 
-			_, err := m.storage.Fetch(tt.metricName)
+			_, err = m.storage.Fetch(tt.metricName)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
