@@ -74,9 +74,11 @@ func TestUpdateHandler(t *testing.T) {
 				chiCtx.URLParams.Add("value", params[4]) // Extract value from path
 			}
 
+			h := NewHandler(nil)
+
 			w := httptest.NewRecorder()
 
-			UpdateHandler(svc)(w, req)
+			h.Update(svc)(w, req)
 
 			assert.Equal(t, tc.want.code, w.Code)
 			assert.Equal(t, tc.want.body, w.Body.String())

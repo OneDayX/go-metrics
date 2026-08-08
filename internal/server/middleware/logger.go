@@ -1,25 +1,11 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"time"
 
 	"go.uber.org/zap"
 )
-
-type loggerKey struct{}
-
-func WithLogger(ctx context.Context, log *zap.Logger) context.Context {
-	return context.WithValue(ctx, loggerKey{}, log)
-}
-
-func LoggerFromContext(ctx context.Context) *zap.Logger {
-	if log, ok := ctx.Value(loggerKey{}).(*zap.Logger); ok {
-		return log
-	}
-	return zap.NewNop()
-}
 
 type responseData struct {
 	status int
@@ -46,15 +32,14 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// Logger returns a middleware that logs request and response details and
-// injects the logger into the request context for downstream handlers.
+// Logger returns a middleware that logs request and response details.
 func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
 			rw := &responseWriter{ResponseWriter: w}
-			next.ServeHTTP(rw, r.WithContext(WithLogger(r.Context(), log)))
+			next.ServeHTTP(rw, r)
 
 			duration := time.Since(start)
 

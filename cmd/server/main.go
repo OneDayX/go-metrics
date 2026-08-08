@@ -31,11 +31,13 @@ func run() error {
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)
 
+	h := handler.NewHandler(logger)
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger(logger))
-	r.Post("/update/{type}/{name}/{value}", handler.UpdateHandler(svc)) // POST /update/gauge/Alloc/1
-	r.Get("/", handler.ListHandler(svc))                                // GET /
-	r.Get("/value/{type}/{name}", handler.GetHandler(svc))              // GET /value/gauge/Alloc
+	r.Post("/update/{type}/{name}/{value}", h.Update(svc)) // POST /update/gauge/Alloc/1
+	r.Get("/", h.List(svc))                                // GET /
+	r.Get("/value/{type}/{name}", h.Get(svc))              // GET /value/gauge/Alloc
 
 	return http.ListenAndServe(cfg.ServerAddr, r)
 }
