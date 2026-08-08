@@ -39,6 +39,13 @@ func run() error {
 	r.Get("/", h.List(svc))                                // GET /
 	r.Get("/value/{type}/{name}", h.Get(svc))              // GET /value/gauge/Alloc
 
+	//JSON Routes
+	r.Post("/update", h.UpdateJSON(svc)) // POST /update
+	r.Post("/value", h.ValueJSON(svc))   // POST /value
+
+	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
+	logger.Debug("starting server")
+
 	return http.ListenAndServe(cfg.ServerAddr, r)
 }
 
