@@ -5,6 +5,12 @@ go 1.26.4
 require github.com/go-chi/chi/v5 v5.3.1
 
 require (
+	github.com/caarlos0/env/v11 v11.4.1 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.28.0 // indirect
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/longbridge/assert v1.2.0
 	github.com/pmezard/go-difflib v1.0.0 // indirect

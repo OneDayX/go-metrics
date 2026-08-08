@@ -1,11 +1,13 @@
 package service
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
-	"strconv"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 )
@@ -95,26 +97,39 @@ func (m *MetricService) Collect() error {
 func (m *MetricService) Send(host string) error {
 	client := &http.Client{}
 
-	var url string
-
 	metrics := m.storage.FetchAll()
 	for _, metric := range metrics {
 
-		switch metric.MType {
-		case models.MetricTypeGauge:
-			url = "http://" + host + "/update/gauge/" + metric.ID + "/" + strconv.FormatFloat(*metric.Value, 'f', -1, 64)
-		case models.MetricTypeCounter:
-			// Send only the delta accumulated since the last poll
+		// For counters, send only the delta accumulated since the last poll.
+		if metric.MType == models.MetricTypeCounter {
 			delta := *metric.Delta - m.lastPollCount
 			m.lastPollCount = *metric.Delta
-			url = "http://" + host + "/update/counter/" + metric.ID + "/" + strconv.FormatInt(delta, 10)
+			metric.Delta = &delta
 		}
 
-		req, err := http.NewRequest(http.MethodPost, url, nil)
+		body, err := json.Marshal(metric)
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Content-Type", "text/plain")
+
+		url := "http://" + host + "/update"
+
+		// Compress the request body with gzip.
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		if _, err := gz.Write(body); err != nil {
+			return err
+		}
+		if err := gz.Close(); err != nil {
+			return err
+		}
+
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(buf.Bytes()))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
 
 		resp, err := client.Do(req)
 		if err != nil {

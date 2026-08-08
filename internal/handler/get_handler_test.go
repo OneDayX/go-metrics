@@ -55,9 +55,11 @@ func TestGetHandler(t *testing.T) {
 			chiCtx.URLParams.Add("type", params[2]) // Extract type from path
 			chiCtx.URLParams.Add("name", params[3]) // Extract name from path
 
+			h := NewHandler(nil)
+
 			w := httptest.NewRecorder()
 
-			GetHandler(svc)(w, req)
+			h.Get(svc)(w, req)
 
 			assert.Equal(t, tc.want.code, w.Code)
 			assert.Equal(t, tc.want.body, w.Body.String())
