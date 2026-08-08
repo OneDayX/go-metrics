@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"time"
 
@@ -38,18 +40,34 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
+			fields := []zap.Field{
+				zap.String("uri", r.RequestURI),
+				zap.String("method", r.Method),
+			}
+
+			// Read and log the request body for POST requests.
+			if r.Method == http.MethodPost && r.Body != nil {
+				body, err := io.ReadAll(r.Body)
+				if err == nil {
+					fields = append(fields, zap.String("body", string(body)))
+					// Restore the body so handlers can still read it.
+					r.Body = io.NopCloser(bytes.NewReader(body))
+				} else {
+					fields = append(fields, zap.String("body", ""))
+				}
+			}
+
 			rw := &responseWriter{ResponseWriter: w}
 			next.ServeHTTP(rw, r)
 
 			duration := time.Since(start)
-
-			log.Info("request",
-				zap.String("uri", r.RequestURI),
-				zap.String("method", r.Method),
+			fields = append(fields,
 				zap.Duration("duration", duration),
 				zap.Int("status", rw.responseData.status),
 				zap.Int("size", rw.responseData.size),
 			)
+
+			log.Info("request", fields...)
 		})
 	}
 }
