@@ -36,6 +36,7 @@ func run() error {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger(logger))
+	r.Use(middleware.GzipMiddleware)
 
 	// Metrictest sending weird requests with trailing slashes, so we add StripSlashes middleware
 	r.Use(chimw.StripSlashes)

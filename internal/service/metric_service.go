@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
@@ -113,11 +114,22 @@ func (m *MetricService) Send(host string) error {
 
 		url := "http://" + host + "/update"
 
-		req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+		// Compress the request body with gzip.
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		if _, err := gz.Write(body); err != nil {
+			return err
+		}
+		if err := gz.Close(); err != nil {
+			return err
+		}
+
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(buf.Bytes()))
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
 
 		resp, err := client.Do(req)
 		if err != nil {

@@ -50,6 +50,7 @@ func (h *Handler) List(svc metricLister) http.HandlerFunc {
 			Metrics: svc.FetchAll(),
 		}
 
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		err = t.Execute(w, metrics)
 
 		if err != nil {
