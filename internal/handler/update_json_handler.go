@@ -16,11 +16,22 @@ type metricUpdaterJSON interface {
 // URL pattern: POST /update
 func (h *Handler) UpdateJSON(svc metricUpdaterJSON) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			h.log.Warn("invalid content type",
+				zap.String("uri", r.RequestURI),
+				zap.String("content_type", ct),
+			)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
 		var metric models.Metric
-		dec := json.NewDecoder(r.Body)
-		if err := dec.Decode(&metric); err != nil {
-			h.log.Debug("cannot decode request JSON body", zap.Error(err))
-			w.WriteHeader(http.StatusInternalServerError)
+		if err := json.NewDecoder(r.Body).Decode(&metric); err != nil {
+			h.log.Warn("failed to decode metric JSON",
+				zap.String("uri", r.RequestURI),
+				zap.Error(err),
+			)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
