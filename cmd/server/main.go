@@ -30,7 +30,21 @@ func run() error {
 	defer logger.Sync()
 
 	storage := repository.NewMemStorage()
-	svc := service.NewMetricService(storage)
+	persister := repository.NewPersister(storage, cfg.FileStoragePath, cfg.StoreInterval)
+
+	if cfg.Restore {
+		if err := persister.LoadMetrics(); err != nil {
+			logger.Error("failed to load metrics", zap.Error(err))
+		}
+	}
+
+	var svc *service.MetricService
+	if cfg.StoreInterval == 0 {
+		svc = service.NewMetricService(repository.NewPersistentMemStorage(storage, persister))
+	} else {
+		svc = service.NewMetricService(storage)
+		persister.Start()
+	}
 
 	h := handler.NewHandler(logger)
 
@@ -50,6 +64,10 @@ func run() error {
 
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
 	logger.Debug("starting server")
+
+	if cfg.StoreInterval > 0 {
+		defer persister.Stop()
+	}
 
 	return http.ListenAndServe(cfg.ServerAddr, r)
 }
