@@ -2,13 +2,13 @@ package service
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
 
+	"github.com/OneDayX/go-metrics/internal/compress"
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
@@ -114,17 +114,12 @@ func (m *MetricService) Send(host string) error {
 
 		url := "http://" + host + "/update"
 
-		// Compress the request body with gzip.
-		var buf bytes.Buffer
-		gz := gzip.NewWriter(&buf)
-		if _, err := gz.Write(body); err != nil {
-			return err
-		}
-		if err := gz.Close(); err != nil {
+		compressed, err := compress.Encode(body)
+		if err != nil {
 			return err
 		}
 
-		req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(buf.Bytes()))
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(compressed))
 		if err != nil {
 			return err
 		}

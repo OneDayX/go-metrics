@@ -14,21 +14,15 @@ var compressibleContentTypes = []string{
 
 // gzipResponseWriter is a wrapper around http.ResponseWriter that compresses the response body.
 type gzipResponseWriter struct {
-	w          http.ResponseWriter
-	gz         *gzip.Writer
-	accepted   bool // true if the client accepts gzip (Accept-Encoding header)
-	wrote      bool // true once the status line has been sent
-	compressed bool // true if the body is being written through the gzip writer
+	w     http.ResponseWriter
+	gz    *gzip.Writer 
+	wrote bool         // true once the status line has been sent
 }
 
-func newGzipResponseWriter(w http.ResponseWriter, accepted bool) *gzipResponseWriter {
-	return &gzipResponseWriter{
-		w:        w,
-		accepted: accepted,
-	}
+func newGzipResponseWriter(w http.ResponseWriter) *gzipResponseWriter {
+	return &gzipResponseWriter{w: w}
 }
 
-// Header returns the underlying ResponseWriter's header map.
 func (g *gzipResponseWriter) Header() http.Header {
 	return g.w.Header()
 }
@@ -39,10 +33,10 @@ func (g *gzipResponseWriter) WriteHeader(statusCode int) {
 	}
 	g.wrote = true
 
-	if g.accepted && statusCode < 300 && shouldCompress(g.w.Header().Get("Content-Type")) {
-		g.compressed = true
+	if statusCode < 300 && shouldCompress(g.w.Header().Get("Content-Type")) {
 		g.gz = gzip.NewWriter(g.w)
 		g.w.Header().Set("Content-Encoding", "gzip")
+		g.w.Header().Add("Vary", "Accept-Encoding")
 		g.w.Header().Del("Content-Length")
 	}
 	g.w.WriteHeader(statusCode)
@@ -53,32 +47,20 @@ func (g *gzipResponseWriter) Write(p []byte) (int, error) {
 	if !g.wrote {
 		g.WriteHeader(http.StatusOK)
 	}
-	if g.compressed {
+	if g.gz != nil {
 		return g.gz.Write(p)
 	}
 	return g.w.Write(p)
 }
 
-func (g *gzipResponseWriter) Flush() {
-	if !g.wrote {
-		g.WriteHeader(http.StatusOK)
-	}
-	if g.compressed {
-		g.gz.Flush()
-	}
-	if f, ok := g.w.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
 func (g *gzipResponseWriter) Close() error {
-	if g.compressed {
+	if g.gz != nil {
 		return g.gz.Close()
 	}
 	return nil
 }
 
-// gzipReader is a wrapper around io.ReadCloser that decompresses the response body.
+// gzipReader is a wrapper around io.ReadCloser that decompresses the request body.
 type gzipReader struct {
 	r  io.ReadCloser
 	zr *gzip.Reader
@@ -96,7 +78,7 @@ func newGzipReader(r io.ReadCloser) (*gzipReader, error) {
 	}, nil
 }
 
-func (g gzipReader) Read(p []byte) (n int, err error) {
+func (g *gzipReader) Read(p []byte) (n int, err error) {
 	return g.zr.Read(p)
 }
 
@@ -105,6 +87,16 @@ func (g *gzipReader) Close() error {
 		return err
 	}
 	return g.zr.Close()
+}
+
+func acceptsEncoding(header, encoding string) bool {
+	for _, part := range strings.Split(header, ",") {
+		enc := strings.TrimSpace(strings.Split(part, ";")[0])
+		if enc == encoding || (encoding == "gzip" && enc == "x-gzip") {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldCompress(contentType string) bool {
@@ -116,24 +108,38 @@ func shouldCompress(contentType string) bool {
 	return false
 }
 
+func decompressRequest(r *http.Request) error {
+	if !acceptsEncoding(r.Header.Get("Content-Encoding"), "gzip") {
+		return nil
+	}
+
+	gz, err := newGzipReader(r.Body)
+	if err != nil {
+		r.Body.Close()
+		return err
+	}
+
+	r.Body = gz
+	r.Header.Del("Content-Encoding")
+	r.Header.Del("Content-Length")
+	r.ContentLength = -1
+	return nil
+}
+
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Decompress the request body if it was sent gzip-encoded.
-		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
-			gz, err := newGzipReader(r.Body)
-			if err != nil {
-				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-				return
-			}
-			defer gz.Close()
-			r.Body = gz
+		if err := decompressRequest(r); err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
 		}
 
-		// Wrap the writer so the response can be compressed if appropriate.
-		// The final decision is made at WriteHeader time, based on the response
-		// Content-Type and the client's Accept-Encoding header.
-		cw := newGzipResponseWriter(w, strings.Contains(r.Header.Get("Accept-Encoding"), "gzip"))
-		next.ServeHTTP(cw, r)
-		cw.Close()
+		if acceptsEncoding(r.Header.Get("Accept-Encoding"), "gzip") {
+			cw := newGzipResponseWriter(w)
+			next.ServeHTTP(cw, r)
+			_ = cw.Close()
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
