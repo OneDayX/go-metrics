@@ -15,8 +15,8 @@ var compressibleContentTypes = []string{
 // gzipResponseWriter is a wrapper around http.ResponseWriter that compresses the response body.
 type gzipResponseWriter struct {
 	w     http.ResponseWriter
-	gz    *gzip.Writer 
-	wrote bool         // true once the status line has been sent
+	gz    *gzip.Writer
+	wrote bool // true once the status line has been sent
 }
 
 func newGzipResponseWriter(w http.ResponseWriter) *gzipResponseWriter {

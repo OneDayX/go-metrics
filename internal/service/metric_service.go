@@ -14,6 +14,7 @@ import (
 
 type storager interface {
 	Update(metric models.Metric) error
+	UpdateBatch(metrics []models.Metric) error
 	FetchAll() []models.Metric
 	Fetch(name string) (models.Metric, error)
 }
@@ -31,6 +32,12 @@ func NewMetricService(storage storager) *MetricService {
 
 func (s *MetricService) Update(metric models.Metric) error {
 	return s.storage.Update(metric)
+}
+
+// UpdateBatch applies a batch of metrics in a single storage call, so that in
+// synchronous mode the file is written once per request, not once per metric.
+func (s *MetricService) UpdateBatch(metrics []models.Metric) error {
+	return s.storage.UpdateBatch(metrics)
 }
 
 func (s *MetricService) Fetch(ID string) (models.Metric, error) {

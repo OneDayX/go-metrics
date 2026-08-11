@@ -9,6 +9,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// maxBodySize caps how much of a request body is read. A batch of all runtime
+// metrics is a few kilobytes of JSON, so anything past this limit is not a
+// legitimate request and gets cut off.
+const maxBodySize = 16 << 10 // 16 KiB
+
 type responseData struct {
 	status int
 	size   int
@@ -45,9 +50,8 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 				zap.String("method", r.Method),
 			}
 
-			// Read and log the request body for POST requests.
 			if r.Method == http.MethodPost && r.Body != nil {
-				body, err := io.ReadAll(r.Body)
+				body, err := io.ReadAll(io.LimitReader(r.Body, maxBodySize))
 				if err == nil {
 					fields = append(fields, zap.String("body", string(body)))
 					// Restore the body so handlers can still read it.

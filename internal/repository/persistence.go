@@ -106,6 +106,18 @@ func (pms *PersistentMemStorage) Update(metric models.Metric) error {
 	return nil
 }
 
+// UpdateBatch applies the whole batch and writes the file once, instead of
+// rewriting it after every metric.
+func (pms *PersistentMemStorage) UpdateBatch(metrics []models.Metric) error {
+	err := pms.storage.UpdateBatch(metrics)
+
+	// Save even on a partial failure: metrics applied before the error are
+	// already in memory, so the file must not fall behind.
+	_ = pms.persister.SaveMetrics()
+
+	return err
+}
+
 func (pms *PersistentMemStorage) FetchAll() []models.Metric {
 	return pms.storage.FetchAll()
 }
