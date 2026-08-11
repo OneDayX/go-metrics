@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 
 	"github.com/OneDayX/go-metrics/internal/handler"
 	"github.com/OneDayX/go-metrics/internal/repository"
@@ -21,6 +24,10 @@ func main() {
 }
 
 func run() error {
+	// ctx is cancelled on SIGINT/SIGTERM so we can flush metrics before exiting.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	cfg := server.GetConfig()
 
 	logger, err := newLogger(cfg)
@@ -63,13 +70,18 @@ func run() error {
 	r.Post("/value", h.ValueJSON(svc))   // POST /value and /value/
 
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
-	logger.Debug("starting server")
+	go func() {
+		if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
+			logger.Fatal("server error", zap.Error(err))
+		}
+	}()
 
-	if cfg.StoreInterval > 0 {
-		defer persister.Stop()
-	}
+	// Wait for SIGINT/SIGTERM, then flush metrics to disk before exiting.
+	<-ctx.Done()
+	logger.Info("shutdown signal received, saving metrics")
 
-	return http.ListenAndServe(cfg.ServerAddr, r)
+	persister.Stop()
+	return persister.SaveMetrics()
 }
 
 // newLogger creates a zap logger. By default it writes JSON logs to stdout;
