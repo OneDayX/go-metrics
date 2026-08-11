@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/OneDayX/go-metrics/internal/models"
+	"go.uber.org/zap"
 )
 
 const listTpl = `
@@ -30,10 +31,15 @@ type metricLister interface {
 	FetchAll() []models.Metric
 }
 
-func ListHandler(svc metricLister) http.HandlerFunc {
+// List returns an HTTP handler that renders all stored metrics.
+func (h *Handler) List(svc metricLister) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t, err := template.New("homepage").Parse(listTpl)
 		if err != nil {
+			h.log.Error("failed to parse metrics list template",
+				zap.String("uri", r.RequestURI),
+				zap.Error(err),
+			)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -44,9 +50,14 @@ func ListHandler(svc metricLister) http.HandlerFunc {
 			Metrics: svc.FetchAll(),
 		}
 
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		err = t.Execute(w, metrics)
 
 		if err != nil {
+			h.log.Error("failed to execute metrics list template",
+				zap.String("uri", r.RequestURI),
+				zap.Error(err),
+			)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}

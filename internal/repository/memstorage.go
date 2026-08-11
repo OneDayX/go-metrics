@@ -39,6 +39,17 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 	return nil
 }
 
+// UpdateBatch applies several metrics in one call. On error the metrics
+// applied before it stay in the storage.
+func (ms *MemStorage) UpdateBatch(metrics []models.Metric) error {
+	for _, metric := range metrics {
+		if err := ms.Update(metric); err != nil {
+			return fmt.Errorf("failed to update metric %s: %w", metric.ID, err)
+		}
+	}
+	return nil
+}
+
 func (ms *MemStorage) FetchAll() []models.Metric {
 	result := make([]models.Metric, 0, 30)
 	for _, metric := range ms.metrics {

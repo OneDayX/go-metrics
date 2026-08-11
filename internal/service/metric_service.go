@@ -1,17 +1,20 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"math/rand/v2"
 	"net/http"
 	"runtime"
-	"strconv"
 
+	"github.com/OneDayX/go-metrics/internal/compress"
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
 type storager interface {
 	Update(metric models.Metric) error
+	UpdateBatch(metrics []models.Metric) error
 	FetchAll() []models.Metric
 	Fetch(name string) (models.Metric, error)
 }
@@ -29,6 +32,12 @@ func NewMetricService(storage storager) *MetricService {
 
 func (s *MetricService) Update(metric models.Metric) error {
 	return s.storage.Update(metric)
+}
+
+// UpdateBatch applies a batch of metrics in a single storage call, so that in
+// synchronous mode the file is written once per request, not once per metric.
+func (s *MetricService) UpdateBatch(metrics []models.Metric) error {
+	return s.storage.UpdateBatch(metrics)
 }
 
 func (s *MetricService) Fetch(ID string) (models.Metric, error) {
@@ -95,26 +104,34 @@ func (m *MetricService) Collect() error {
 func (m *MetricService) Send(host string) error {
 	client := &http.Client{}
 
-	var url string
-
 	metrics := m.storage.FetchAll()
 	for _, metric := range metrics {
 
-		switch metric.MType {
-		case models.MetricTypeGauge:
-			url = "http://" + host + "/update/gauge/" + metric.ID + "/" + strconv.FormatFloat(*metric.Value, 'f', -1, 64)
-		case models.MetricTypeCounter:
-			// Send only the delta accumulated since the last poll
+		// For counters, send only the delta accumulated since the last poll.
+		if metric.MType == models.MetricTypeCounter {
 			delta := *metric.Delta - m.lastPollCount
 			m.lastPollCount = *metric.Delta
-			url = "http://" + host + "/update/counter/" + metric.ID + "/" + strconv.FormatInt(delta, 10)
+			metric.Delta = &delta
 		}
 
-		req, err := http.NewRequest(http.MethodPost, url, nil)
+		body, err := json.Marshal(metric)
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Content-Type", "text/plain")
+
+		url := "http://" + host + "/update"
+
+		compressed, err := compress.Encode(body)
+		if err != nil {
+			return err
+		}
+
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(compressed))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
 
 		resp, err := client.Do(req)
 		if err != nil {

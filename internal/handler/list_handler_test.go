@@ -75,9 +75,11 @@ func TestListHandler(t *testing.T) {
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 
+			h := NewHandler(nil)
+
 			w := httptest.NewRecorder()
 
-			ListHandler(svc)(w, r)
+			h.List(svc)(w, r)
 
 			assert.Equal(t, tc.want.code, w.Code)
 			assert.EqualHTML(t, tc.want.body, w.Body.String())
