@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/OneDayX/go-metrics/internal/database"
 	"github.com/OneDayX/go-metrics/internal/handler"
 	"github.com/OneDayX/go-metrics/internal/repository"
 	"github.com/OneDayX/go-metrics/internal/server"
@@ -36,6 +37,15 @@ func run() error {
 	}
 	defer logger.Sync()
 
+	var db *database.DB
+	if cfg.DatabaseDSN != "" {
+		db, err = database.New(ctx, cfg.DatabaseDSN)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+	}
+
 	storage := repository.NewMemStorage()
 	persister := repository.NewPersister(storage, cfg.FileStoragePath, cfg.StoreInterval)
 
@@ -64,6 +74,7 @@ func run() error {
 	r.Post("/update/{type}/{name}/{value}", h.Update(svc)) // POST /update/gauge/Alloc/1
 	r.Get("/", h.List(svc))                                // GET /
 	r.Get("/value/{type}/{name}", h.Get(svc))              // GET /value/gauge/Alloc
+	r.Get("/ping", h.Ping(db))                             // GET /ping
 
 	//JSON Routes
 	r.Post("/update", h.UpdateJSON(svc)) // POST /update and /update/

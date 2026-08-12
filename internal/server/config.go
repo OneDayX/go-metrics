@@ -13,6 +13,7 @@ type Config struct {
 	StoreInterval   int    `env:"STORE_INTERVAL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 func GetConfig() Config {
@@ -22,6 +23,7 @@ func GetConfig() Config {
 		StoreInterval:   300,
 		FileStoragePath: "/tmp/metrics-db.json",
 		Restore:         false,
+		DatabaseDSN:     "",
 	}
 
 	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
@@ -29,6 +31,7 @@ func GetConfig() Config {
 	flag.IntVar(&cfg.StoreInterval, "i", cfg.StoreInterval, "store interval in seconds (0 for sync)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "path to file storage")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore metrics from file on startup")
+	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database connection string (postgres DSN)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
