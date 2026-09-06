@@ -160,3 +160,52 @@ func TestMemStorage_Fetch(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateMetric(t *testing.T) {
+	tests := []struct {
+		name    string
+		metric  models.Metric
+		wantErr bool
+	}{
+		{
+			name:    "valid gauge",
+			metric:  models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Value: models.Ptr(1.5)},
+			wantErr: false,
+		},
+		{
+			name:    "valid counter",
+			metric:  models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))},
+			wantErr: false,
+		},
+		{
+			name:    "gauge without value",
+			metric:  models.Metric{ID: "Alloc", MType: models.MetricTypeGauge},
+			wantErr: true,
+		},
+		{
+			name:    "counter without delta",
+			metric:  models.Metric{ID: "PollCount", MType: models.MetricTypeCounter},
+			wantErr: true,
+		},
+		{
+			name:    "gauge with delta instead of value",
+			metric:  models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Delta: models.Ptr(int64(1))},
+			wantErr: true,
+		},
+		{
+			name:    "unknown type",
+			metric:  models.Metric{ID: "Alloc", MType: "histogram", Value: models.Ptr(1.5)},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validateMetric(tt.metric); tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
