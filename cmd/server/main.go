@@ -37,30 +37,47 @@ func run() error {
 	}
 	defer logger.Sync()
 
+	// Storage is picked in order: database, then file, then memory only.
 	var db *database.DB
-	if cfg.DatabaseDSN != "" {
+	var persister *repository.Persister
+	var svc *service.MetricService
+
+	switch {
+	case cfg.DatabaseDSN != "":
+		if err := database.Migrate(cfg.DatabaseDSN); err != nil {
+			return err
+		}
+
 		db, err = database.New(ctx, cfg.DatabaseDSN)
 		if err != nil {
 			return err
 		}
 		defer db.Close()
-	}
 
-	storage := repository.NewMemStorage()
-	persister := repository.NewPersister(storage, cfg.FileStoragePath, cfg.StoreInterval)
+		svc = service.NewMetricService(repository.NewDBStorage(db.Pool()))
+		logger.Info("storing metrics in the database")
 
-	if cfg.Restore {
-		if err := persister.LoadMetrics(); err != nil {
-			logger.Error("failed to load metrics", zap.Error(err))
+	case cfg.FileStoragePath != "":
+		storage := repository.NewMemStorage()
+		persister = repository.NewPersister(storage, cfg.FileStoragePath, cfg.StoreInterval)
+
+		if cfg.Restore {
+			if err := persister.LoadMetrics(); err != nil {
+				logger.Error("failed to load metrics", zap.Error(err))
+			}
 		}
-	}
 
-	var svc *service.MetricService
-	if cfg.StoreInterval == 0 {
-		svc = service.NewMetricService(repository.NewPersistentMemStorage(storage, persister))
-	} else {
-		svc = service.NewMetricService(storage)
-		persister.Start()
+		if cfg.StoreInterval == 0 {
+			svc = service.NewMetricService(repository.NewPersistentMemStorage(storage, persister))
+		} else {
+			svc = service.NewMetricService(storage)
+			persister.Start()
+		}
+		logger.Info("storing metrics in a file", zap.String("path", cfg.FileStoragePath))
+
+	default:
+		svc = service.NewMetricService(repository.NewMemStorage())
+		logger.Info("storing metrics in memory only")
 	}
 
 	h := handler.NewHandler(logger)
@@ -89,7 +106,11 @@ func run() error {
 
 	// Wait for SIGINT/SIGTERM, then flush metrics to disk before exiting.
 	<-ctx.Done()
-	logger.Info("shutdown signal received, saving metrics")
+	logger.Info("shutdown signal received")
+
+	if persister == nil {
+		return nil
+	}
 
 	persister.Stop()
 	return persister.SaveMetrics()

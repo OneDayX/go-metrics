@@ -20,6 +20,10 @@ func New(ctx context.Context, dsn string) (*DB, error) {
 	return &DB{pool: pool}, nil
 }
 
+func (db *DB) Pool() *pgxpool.Pool {
+	return db.pool
+}
+
 // Ping checks that the database accepts connections.
 func (db *DB) Ping(ctx context.Context) error {
 	if db == nil {
