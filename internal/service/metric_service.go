@@ -48,7 +48,7 @@ func (s *MetricService) FetchAll() []models.Metric {
 	return s.storage.FetchAll()
 }
 
-func (m *MetricService) Collect() error {
+func (s *MetricService) Collect() error {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
@@ -86,31 +86,31 @@ func (m *MetricService) Collect() error {
 	}
 
 	for _, g := range gauges {
-		if err := m.Update(models.Metric{ID: g.name, MType: models.MetricTypeGauge, Value: models.Ptr(g.value)}); err != nil {
+		if err := s.Update(models.Metric{ID: g.name, MType: models.MetricTypeGauge, Value: models.Ptr(g.value)}); err != nil {
 			return err
 		}
 	}
 
-	if err := m.Update(models.Metric{ID: "RandomValue", MType: models.MetricTypeGauge, Value: models.Ptr(rand.Float64())}); err != nil {
+	if err := s.Update(models.Metric{ID: "RandomValue", MType: models.MetricTypeGauge, Value: models.Ptr(rand.Float64())}); err != nil {
 		return err
 	}
-	if err := m.Update(models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}); err != nil {
+	if err := s.Update(models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *MetricService) Send(host string) error {
+func (s *MetricService) Send(host string) error {
 	client := &http.Client{}
 
-	metrics := m.storage.FetchAll()
+	metrics := s.storage.FetchAll()
 	for _, metric := range metrics {
 
 		// For counters, send only the delta accumulated since the last poll.
 		if metric.MType == models.MetricTypeCounter {
-			delta := *metric.Delta - m.lastPollCount
-			m.lastPollCount = *metric.Delta
+			delta := *metric.Delta - s.lastPollCount
+			s.lastPollCount = *metric.Delta
 			metric.Delta = &delta
 		}
 
