@@ -4,7 +4,7 @@ SERVER_BINARY := cmd/server/server
 AGENT_BINARY  := cmd/agent/agent
 
 # Iteration checked by `make iter`, override as `make iter ITER=11`.
-ITER ?= 11
+ITER ?= 12
 
 SERVER_PORT ?= 4000
 TEMP_FILE   ?= /tmp/metrics-db-test.json

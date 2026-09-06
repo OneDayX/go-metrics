@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
 type Persister struct {
+	mu       sync.Mutex
 	storage  *MemStorage
 	filePath string
 	interval time.Duration
@@ -25,6 +27,9 @@ func NewPersister(storage *MemStorage, filePath string, intervalSeconds int) *Pe
 }
 
 func (p *Persister) SaveMetrics() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	metrics := p.storage.FetchAll()
 	data, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {

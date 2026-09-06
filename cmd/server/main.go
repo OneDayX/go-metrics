@@ -94,8 +94,9 @@ func run() error {
 	r.Get("/ping", h.Ping(db))                             // GET /ping
 
 	//JSON Routes
-	r.Post("/update", h.UpdateJSON(svc)) // POST /update and /update/
-	r.Post("/value", h.ValueJSON(svc))   // POST /value and /value/
+	r.Post("/update", h.UpdateJSON(svc))   // POST /update and /update/
+	r.Post("/updates", h.UpdatesJSON(svc)) // POST /updates and /updates/
+	r.Post("/value", h.ValueJSON(svc))     // POST /value and /value/
 
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
 	go func() {

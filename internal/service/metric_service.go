@@ -101,52 +101,53 @@ func (s *MetricService) Collect() error {
 	return nil
 }
 
+// Send reports every collected metric to the server in a single gzipped
+// request to POST /updates/.
 func (s *MetricService) Send(host string) error {
-	client := &http.Client{}
-
 	metrics := s.storage.FetchAll()
-	for _, metric := range metrics {
 
-		// For counters, send only the delta accumulated since the last poll.
-		if metric.MType == models.MetricTypeCounter {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	reported := s.lastPollCount
+	for i, metric := range metrics {
+		if metric.MType == models.MetricTypeCounter && metric.Delta != nil {
+			reported = *metric.Delta
+
 			delta := *metric.Delta - s.lastPollCount
-			s.lastPollCount = *metric.Delta
-			metric.Delta = &delta
-		}
-
-		body, err := json.Marshal(metric)
-		if err != nil {
-			return err
-		}
-
-		url := "http://" + host + "/update"
-
-		compressed, err := compress.Encode(body)
-		if err != nil {
-			return err
-		}
-
-		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(compressed))
-		if err != nil {
-			return err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Content-Encoding", "gzip")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return errors.New("failed to send metric")
-		}
-
-		if err := resp.Body.Close(); err != nil {
-			return err
+			metrics[i].Delta = &delta
 		}
 	}
+
+	body, err := json.Marshal(metrics)
+	if err != nil {
+		return err
+	}
+
+	compressed, err := compress.Encode(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(compressed))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("failed to send metrics")
+	}
+
+	s.lastPollCount = reported
 
 	return nil
 }

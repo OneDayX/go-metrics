@@ -3,16 +3,16 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
 type MemStorage struct {
+	mu      sync.RWMutex
 	metrics map[string]models.Metric
 }
 
-// validateMetric checks that a metric carries the value its type requires.
-// Both MemStorage and DBStorage rely on it before storing anything.
 func validateMetric(metric models.Metric) error {
 	switch metric.MType {
 	case models.MetricTypeGauge:
@@ -35,7 +35,6 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 		return err
 	}
 
-	// Counters accumulate, gauges are simply overwritten.
 	if metric.MType == models.MetricTypeCounter {
 		if existing, ok := ms.metrics[metric.ID]; ok && existing.Delta != nil {
 			accumulated := *existing.Delta + *metric.Delta
@@ -47,8 +46,7 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 	return nil
 }
 
-// UpdateBatch applies several metrics in one call. On error the metrics
-// applied before it stay in the storage.
+// UpdateBatch applies several metrics in one call.
 func (ms *MemStorage) UpdateBatch(metrics []models.Metric) error {
 	for _, metric := range metrics {
 		if err := ms.Update(metric); err != nil {
