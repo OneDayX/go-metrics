@@ -84,7 +84,7 @@ func (h *Handler) Update(svc metricUpdater) http.HandlerFunc {
 				zap.String("type", metricType),
 				zap.Error(err),
 			)
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(statusForError(err))
 			return
 		}
 

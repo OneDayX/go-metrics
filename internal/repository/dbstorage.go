@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/OneDayX/go-metrics/internal/models"
+	"github.com/OneDayX/go-metrics/internal/retry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,8 +33,12 @@ func (ds *DBStorage) Update(metric models.Metric) error {
 		return err
 	}
 
-	_, err := ds.pool.Exec(context.Background(), upsertQuery,
-		metric.ID, metric.MType, metric.Delta, metric.Value)
+	err := retry.Do(func() error {
+		_, err := ds.pool.Exec(context.Background(), upsertQuery,
+			metric.ID, metric.MType, metric.Delta, metric.Value)
+		return err
+	}, isRetriablePgError)
+
 	if err != nil {
 		return fmt.Errorf("failed to update metric %s: %w", metric.ID, err)
 	}
@@ -44,6 +49,22 @@ func (ds *DBStorage) Update(metric models.Metric) error {
 // UpdateBatch applies all metrics in a single transaction, so a failing metric
 // leaves the table untouched.
 func (ds *DBStorage) UpdateBatch(metrics []models.Metric) error {
+	// Validation does not touch the database, so it runs once, before any
+	// attempt: a malformed metric will not become valid on a retry.
+	for _, metric := range metrics {
+		if err := validateMetric(metric); err != nil {
+			return err
+		}
+	}
+
+	// The whole transaction is repeated, not just the Exec: a dropped
+	// connection can just as well break Begin or Commit.
+	return retry.Do(func() error {
+		return ds.updateBatchOnce(metrics)
+	}, isRetriablePgError)
+}
+
+func (ds *DBStorage) updateBatchOnce(metrics []models.Metric) error {
 	ctx := context.Background()
 
 	tx, err := ds.pool.Begin(ctx)
@@ -53,10 +74,6 @@ func (ds *DBStorage) UpdateBatch(metrics []models.Metric) error {
 	defer tx.Rollback(ctx)
 
 	for _, metric := range metrics {
-		if err := validateMetric(metric); err != nil {
-			return err
-		}
-
 		_, err := tx.Exec(ctx, upsertQuery, metric.ID, metric.MType, metric.Delta, metric.Value)
 		if err != nil {
 			return fmt.Errorf("failed to update metric %s: %w", metric.ID, err)
@@ -67,10 +84,26 @@ func (ds *DBStorage) UpdateBatch(metrics []models.Metric) error {
 }
 
 func (ds *DBStorage) FetchAll() []models.Metric {
+	var result []models.Metric
+
+	err := retry.Do(func() error {
+		var err error
+		result, err = ds.fetchAllOnce()
+		return err
+	}, isRetriablePgError)
+
+	if err != nil {
+		return nil
+	}
+
+	return result
+}
+
+func (ds *DBStorage) fetchAllOnce() ([]models.Metric, error) {
 	rows, err := ds.pool.Query(context.Background(),
 		`SELECT id, type, delta, value FROM metrics`)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -78,27 +111,25 @@ func (ds *DBStorage) FetchAll() []models.Metric {
 	for rows.Next() {
 		var metric models.Metric
 		if err := rows.Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value); err != nil {
-			return nil
+			return nil, err
 		}
 		result = append(result, metric)
 	}
 
-	if rows.Err() != nil {
-		return nil
-	}
-
-	return result
+	return result, rows.Err()
 }
 
 func (ds *DBStorage) Fetch(ID string) (models.Metric, error) {
 	var metric models.Metric
 
-	row := ds.pool.QueryRow(context.Background(),
-		`SELECT id, type, delta, value FROM metrics WHERE id = $1`, ID)
+	err := retry.Do(func() error {
+		row := ds.pool.QueryRow(context.Background(),
+			`SELECT id, type, delta, value FROM metrics WHERE id = $1`, ID)
+		return row.Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
+	}, isRetriablePgError)
 
-	err := row.Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return models.Metric{}, errors.New("metric not found")
+		return models.Metric{}, fmt.Errorf("%w: %q", models.ErrMetricNotFound, ID)
 	}
 	if err != nil {
 		return models.Metric{}, err

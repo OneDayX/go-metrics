@@ -32,12 +32,12 @@ func (h *Handler) ValueJSON(svc metricFetcher) http.HandlerFunc {
 
 		stored, err := svc.Fetch(metric.ID)
 		if err != nil {
-			h.log.Warn("metric not found",
+			h.log.Warn("failed to fetch metric",
 				zap.String("uri", r.RequestURI),
 				zap.String("name", metric.ID),
 				zap.Error(err),
 			)
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(statusForError(err))
 			return
 		}
 

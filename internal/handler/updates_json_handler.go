@@ -57,7 +57,7 @@ func (h *Handler) UpdatesJSON(svc metricsBatchUpdater) http.HandlerFunc {
 				zap.Int("count", len(metrics)),
 				zap.Error(err),
 			)
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(statusForError(err))
 			return
 		}
 

@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
@@ -17,14 +16,14 @@ func validateMetric(metric models.Metric) error {
 	switch metric.MType {
 	case models.MetricTypeGauge:
 		if metric.Value == nil {
-			return errors.New("invalid value type for gauge metric: nil value")
+			return fmt.Errorf("%w: gauge %q has no value", models.ErrInvalidMetric, metric.ID)
 		}
 	case models.MetricTypeCounter:
 		if metric.Delta == nil {
-			return errors.New("invalid value type for counter metric: nil delta")
+			return fmt.Errorf("%w: counter %q has no delta", models.ErrInvalidMetric, metric.ID)
 		}
 	default:
-		return fmt.Errorf("unknown metric type: %s", metric.MType)
+		return fmt.Errorf("%w: %q", models.ErrUnknownMetricType, metric.MType)
 	}
 
 	return nil
@@ -68,7 +67,7 @@ func (ms *MemStorage) Fetch(ID string) (models.Metric, error) {
 	if value, ok := ms.metrics[ID]; ok {
 		return value, nil
 	} else {
-		return models.Metric{}, errors.New("metric not found")
+		return models.Metric{}, fmt.Errorf("%w: %q", models.ErrMetricNotFound, ID)
 	}
 }
 

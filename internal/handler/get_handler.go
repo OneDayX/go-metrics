@@ -21,12 +21,12 @@ func (h *Handler) Get(svc metricFetcher) http.HandlerFunc {
 		metric, err := svc.Fetch(name)
 
 		if err != nil {
-			h.log.Warn("metric not found",
+			h.log.Warn("failed to fetch metric",
 				zap.String("uri", r.RequestURI),
 				zap.String("name", name),
 				zap.Error(err),
 			)
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(statusForError(err))
 			return
 		}
 

@@ -51,7 +51,7 @@ func (h *Handler) UpdateJSON(svc metricUpdaterJSON) http.HandlerFunc {
 				zap.String("type", string(metric.MType)),
 				zap.Error(err),
 			)
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(statusForError(err))
 			return
 		}
 

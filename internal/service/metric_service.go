@@ -4,13 +4,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"runtime"
 
 	"github.com/OneDayX/go-metrics/internal/compress"
 	"github.com/OneDayX/go-metrics/internal/models"
+	"github.com/OneDayX/go-metrics/internal/retry"
 )
+
+// ErrSendFailed means the server answered the agent, but not with 200.
+var ErrSendFailed = errors.New("failed to send metrics")
 
 type storager interface {
 	Update(metric models.Metric) error
@@ -130,7 +136,19 @@ func (s *MetricService) Send(host string) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(compressed))
+	if err := retry.Do(func() error { return post(host, compressed) }, isRetriableSendError); err != nil {
+		return err
+	}
+
+	s.lastPollCount = reported
+
+	return nil
+}
+
+// post sends one gzipped batch. It builds a fresh request on every call,
+// because a retried request cannot reuse a body reader that is already drained.
+func post(host string, body []byte) error {
+	req, err := http.NewRequest(http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -144,10 +162,16 @@ func (s *MetricService) Send(host string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New("failed to send metrics")
+		return fmt.Errorf("%w: server answered %d", ErrSendFailed, resp.StatusCode)
 	}
 
-	s.lastPollCount = reported
-
 	return nil
+}
+
+// isRetriableSendError reports whether the server was simply unreachable.
+// A network failure is worth another try; an answer we did not like means the
+// server is alive and would reject the same batch again.
+func isRetriableSendError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
