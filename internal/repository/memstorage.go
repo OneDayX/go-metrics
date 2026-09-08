@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 )
@@ -13,7 +14,16 @@ type MemStorage struct {
 	metrics map[string]models.Metric
 }
 
+// maxMetricIDRunes matches the id column in the first migration, so that every
+// backend rejects the same names. Runes, because varchar(n) counts characters.
+const maxMetricIDRunes = 255
+
 func validateMetric(metric models.Metric) error {
+	if n := utf8.RuneCountInString(metric.ID); n > maxMetricIDRunes {
+		return fmt.Errorf("%w: the name is %d characters long, the limit is %d",
+			models.ErrInvalidMetric, n, maxMetricIDRunes)
+	}
+
 	switch metric.MType {
 	case models.MetricTypeGauge:
 		if metric.Value == nil {

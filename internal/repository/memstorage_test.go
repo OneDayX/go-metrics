@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -253,4 +254,55 @@ func TestMemStorage_ConcurrentAccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(goroutines*iterations), *counter.Delta,
 		"every increment must be counted exactly once")
+}
+
+// The name limit mirrors the varchar(255) column.
+func TestValidateMetric_NameLength(t *testing.T) {
+	tests := []struct {
+		name    string
+		id      string
+		wantErr bool
+	}{
+		{name: "at the limit", id: strings.Repeat("a", maxMetricIDRunes), wantErr: false},
+		{name: "one over the limit", id: strings.Repeat("a", maxMetricIDRunes+1), wantErr: true},
+		{
+			// 255 Cyrillic characters are 510 bytes.
+			name:    "multi-byte name at the limit",
+			id:      strings.Repeat("я", maxMetricIDRunes),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMetric(models.Metric{ID: tt.id, MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
+
+			if !tt.wantErr {
+				require.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+			assert.ErrorIs(t, err, models.ErrInvalidMetric, "must map to 400, not 500")
+		})
+	}
+}
+
+// Both backends must reject the same name.
+func TestStorages_RejectTheSameOverlongName(t *testing.T) {
+	ctx := context.Background()
+	metric := models.Metric{
+		ID:    strings.Repeat("a", maxMetricIDRunes+1),
+		MType: models.MetricTypeGauge,
+		Value: models.Ptr(1.0),
+	}
+
+	err := NewMemStorage().Update(ctx, metric)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, models.ErrInvalidMetric, "memory storage")
+
+	ds := newTestStorage(t) // skips unless TEST_DATABASE_DSN is set
+	err = ds.Update(ctx, metric)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, models.ErrInvalidMetric, "database storage")
 }
