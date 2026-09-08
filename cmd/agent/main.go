@@ -25,10 +25,10 @@ func run() error {
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)
 
-	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+	pollTicker := time.NewTicker(cfg.PollInterval)
 	defer pollTicker.Stop()
 
-	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+	reportTicker := time.NewTicker(cfg.ReportInterval)
 	defer reportTicker.Stop()
 
 	// Perform an immediate first poll so we have data ready.

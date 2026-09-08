@@ -17,7 +17,7 @@ func TestPersister_SaveAndLoad(t *testing.T) {
 	storage.Update(context.Background(), models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Value: models.Ptr(100.5)})
 	storage.Update(context.Background(), models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(42))})
 
-	persister := NewPersister(storage, tmpFile, 1)
+	persister := NewPersister(storage, tmpFile, time.Second)
 	if err := persister.SaveMetrics(); err != nil {
 		t.Fatalf("SaveMetrics failed: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestPersister_SaveAndLoad(t *testing.T) {
 	}
 
 	storage2 := NewMemStorage()
-	persister2 := NewPersister(storage2, tmpFile, 1)
+	persister2 := NewPersister(storage2, tmpFile, time.Second)
 	if err := persister2.LoadMetrics(); err != nil {
 		t.Fatalf("LoadMetrics failed: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestPersister_PeriodicSave(t *testing.T) {
 	storage := NewMemStorage()
 	storage.Update(context.Background(), models.Metric{ID: "TestMetric", MType: models.MetricTypeGauge, Value: models.Ptr(123.0)})
 
-	persister := NewPersister(storage, tmpFile, 1)
+	persister := NewPersister(storage, tmpFile, time.Second)
 	persister.Start()
 	time.Sleep(1500 * time.Millisecond)
 	persister.Stop()

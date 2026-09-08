@@ -19,11 +19,11 @@ type Persister struct {
 	ticker   *time.Ticker
 }
 
-func NewPersister(storage *MemStorage, filePath string, intervalSeconds int) *Persister {
+func NewPersister(storage *MemStorage, filePath string, interval time.Duration) *Persister {
 	return &Persister{
 		storage:  storage,
 		filePath: filePath,
-		interval: time.Duration(intervalSeconds) * time.Second,
+		interval: interval,
 	}
 }
 
@@ -68,7 +68,8 @@ func (p *Persister) LoadMetrics() error {
 }
 
 func (p *Persister) Start() {
-	if p.interval == 0 {
+	// Not just "== 0": time.NewTicker panics on any non-positive interval.
+	if p.interval <= 0 {
 		return
 	}
 
