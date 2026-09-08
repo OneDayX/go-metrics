@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/OneDayX/go-metrics/internal/retry"
 )
@@ -30,21 +31,28 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// A body that cannot be rebuilt must not be sent twice.
 	replayable := req.Body == nil || req.GetBody != nil
 
-	var resp *http.Response
+	resp, err := c.attempt(req)
 
-	err := retry.Do(func() error {
-		attempt, err := rewind(req)
-		if err != nil {
-			return err
+	for _, delay := range retry.Delays {
+		if err == nil || !replayable || !isNetworkError(err) {
+			break
 		}
 
-		resp, err = c.client.Do(attempt)
-		return err
-	}, func(err error) bool {
-		return replayable && isNetworkError(err)
-	})
+		time.Sleep(delay)
+		resp, err = c.attempt(req)
+	}
 
 	return resp, err
+}
+
+// attempt sends one copy of the request.
+func (c *Client) attempt(req *http.Request) (*http.Response, error) {
+	fresh, err := rewind(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.client.Do(fresh)
 }
 
 // rewind copies the request with a fresh body: every attempt drains it.

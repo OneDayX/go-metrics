@@ -78,7 +78,10 @@ func TestDo_GivesUpOnAnUnreachableServer(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, "http://localhost:1", bytes.NewReader([]byte("batch")))
 	require.NoError(t, err)
 
-	_, err = New(nil).Do(req)
+	resp, err := New(nil).Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
 	assert.Error(t, err)
 }
 
@@ -99,7 +102,10 @@ func TestDo_DoesNotRepeatAnUnrewindableBody(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, req.GetBody, "the test needs a request that cannot be rewound")
 
-	_, err = New(nil).Do(req)
+	resp, err := New(nil).Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
 	assert.Error(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&attempts), "sent once, not repeated")
 }
