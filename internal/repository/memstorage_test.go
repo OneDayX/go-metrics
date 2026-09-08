@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMemStorage_Update(t *testing.T) {
@@ -209,4 +212,45 @@ func TestValidateMetric(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMemStorage_ConcurrentAccess reads and writes the map from several
+// goroutines, the way the server does. Meaningful under -race.
+func TestMemStorage_ConcurrentAccess(t *testing.T) {
+	ms := NewMemStorage()
+	ctx := context.Background()
+
+	const goroutines = 8
+	const iterations = 200
+
+	var wg sync.WaitGroup
+	for g := range goroutines {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := range iterations {
+				_ = ms.Update(ctx, models.Metric{
+					ID:    fmt.Sprintf("Gauge%d", g),
+					MType: models.MetricTypeGauge,
+					Value: models.Ptr(float64(i)),
+				})
+				_ = ms.Update(ctx, models.Metric{
+					ID:    "PollCount",
+					MType: models.MetricTypeCounter,
+					Delta: models.Ptr(int64(1)),
+				})
+				_, _ = ms.Fetch(ctx, "PollCount")
+				_ = ms.FetchAll(ctx)
+				_ = ms.UpdateBatch(ctx, []models.Metric{
+					{ID: "Batched", MType: models.MetricTypeGauge, Value: models.Ptr(float64(i))},
+				})
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	counter, err := ms.Fetch(ctx, "PollCount")
+	require.NoError(t, err)
+	assert.Equal(t, int64(goroutines*iterations), *counter.Delta,
+		"every increment must be counted exactly once")
 }

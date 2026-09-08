@@ -36,29 +36,47 @@ func (ms *MemStorage) Update(_ context.Context, metric models.Metric) error {
 		return err
 	}
 
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	ms.update(metric)
+	return nil
+}
+
+// update writes one validated metric. The caller must hold ms.mu.
+func (ms *MemStorage) update(metric models.Metric) {
 	if metric.MType == models.MetricTypeCounter {
 		if existing, ok := ms.metrics[metric.ID]; ok && existing.Delta != nil {
+			// A fresh pointer, so readers keep the value they already got.
 			accumulated := *existing.Delta + *metric.Delta
 			metric.Delta = &accumulated
 		}
 	}
 
 	ms.metrics[metric.ID] = metric
-	return nil
 }
 
-// UpdateBatch applies several metrics in one call.
-func (ms *MemStorage) UpdateBatch(ctx context.Context, metrics []models.Metric) error {
+// UpdateBatch applies several metrics under a single lock. A malformed metric
+// stops the batch, leaving the ones before it applied.
+func (ms *MemStorage) UpdateBatch(_ context.Context, metrics []models.Metric) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
 	for _, metric := range metrics {
-		if err := ms.Update(ctx, metric); err != nil {
+		if err := validateMetric(metric); err != nil {
 			return fmt.Errorf("failed to update metric %s: %w", metric.ID, err)
 		}
+		ms.update(metric)
 	}
+
 	return nil
 }
 
 func (ms *MemStorage) FetchAll(_ context.Context) []models.Metric {
-	result := make([]models.Metric, 0, 30)
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	result := make([]models.Metric, 0, len(ms.metrics))
 	for _, metric := range ms.metrics {
 		result = append(result, metric)
 	}
@@ -66,11 +84,14 @@ func (ms *MemStorage) FetchAll(_ context.Context) []models.Metric {
 }
 
 func (ms *MemStorage) Fetch(_ context.Context, ID string) (models.Metric, error) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
 	if value, ok := ms.metrics[ID]; ok {
 		return value, nil
-	} else {
-		return models.Metric{}, fmt.Errorf("%w: %q", models.ErrMetricNotFound, ID)
 	}
+
+	return models.Metric{}, fmt.Errorf("%w: %q", models.ErrMetricNotFound, ID)
 }
 
 func NewMemStorage() *MemStorage {
