@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -10,7 +11,7 @@ import (
 )
 
 type metricFetcher interface {
-	Fetch(name string) (models.Metric, error)
+	Fetch(ctx context.Context, name string) (models.Metric, error)
 }
 
 // Get returns an HTTP handler that fetches a single metric by URL parameters.
@@ -18,7 +19,7 @@ func (h *Handler) Get(svc metricFetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		mType := models.MetricType(chi.URLParam(r, "type"))
 		name := chi.URLParam(r, "name")
-		metric, err := svc.Fetch(name)
+		metric, err := svc.Fetch(r.Context(), name)
 
 		if err != nil {
 			h.log.Warn("failed to fetch metric",

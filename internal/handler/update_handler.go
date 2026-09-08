@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -10,7 +11,7 @@ import (
 )
 
 type metricUpdater interface {
-	Update(metric models.Metric) error
+	Update(ctx context.Context, metric models.Metric) error
 }
 
 // Update returns an HTTP handler that updates a metric from URL parameters.
@@ -77,7 +78,7 @@ func (h *Handler) Update(svc metricUpdater) http.HandlerFunc {
 			return
 		}
 
-		if err := svc.Update(metric); err != nil {
+		if err := svc.Update(r.Context(), metric); err != nil {
 			h.log.Error("failed to update metric",
 				zap.String("uri", r.RequestURI),
 				zap.String("name", metricName),

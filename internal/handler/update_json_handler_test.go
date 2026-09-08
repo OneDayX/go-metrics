@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,7 +86,7 @@ func TestJSONUpdateHandlerStoresMetric(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	metric, err := svc.Fetch("LastGC")
+	metric, err := svc.Fetch(context.Background(), "LastGC")
 	require.NoError(t, err)
 	assert.Equal(t, models.MetricTypeGauge, metric.MType)
 	require.NotNil(t, metric.Value)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -102,14 +103,14 @@ func TestJSONUpdatesHandlerStoresMetrics(t *testing.T) {
 	h.UpdatesJSON(svc)(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Len(t, svc.FetchAll(), 2)
+	assert.Len(t, svc.FetchAll(context.Background()), 2)
 
-	gauge, err := svc.Fetch("Alloc")
+	gauge, err := svc.Fetch(context.Background(), "Alloc")
 	require.NoError(t, err)
 	require.NotNil(t, gauge.Value)
 	assert.Equal(t, 1.5, *gauge.Value)
 
-	counter, err := svc.Fetch("PollCount")
+	counter, err := svc.Fetch(context.Background(), "PollCount")
 	require.NoError(t, err)
 	require.NotNil(t, counter.Delta)
 	assert.Equal(t, int64(5), *counter.Delta, "duplicates inside one batch accumulate")

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"testing"
 
 	"github.com/OneDayX/go-metrics/internal/models"
@@ -60,12 +61,12 @@ func TestMemStorage_Update(t *testing.T) {
 				metrics: tt.fields.metrics,
 			}
 
-			if err := ms.Update(tt.metric); tt.wantErr {
+			if err := ms.Update(context.Background(), tt.metric); tt.wantErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 
-				metric, err := ms.Fetch(tt.metric.ID)
+				metric, err := ms.Fetch(context.Background(), tt.metric.ID)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantMetric, metric)
 			}
@@ -103,7 +104,7 @@ func TestMemStorage_FetchAll(t *testing.T) {
 				metrics: tt.fields.metrics,
 			}
 
-			assert.ElementsMatch(t, tt.wantMetrics, ms.FetchAll())
+			assert.ElementsMatch(t, tt.wantMetrics, ms.FetchAll(context.Background()))
 		})
 	}
 }
@@ -150,7 +151,7 @@ func TestMemStorage_Fetch(t *testing.T) {
 				metrics: tt.fields.metrics,
 			}
 
-			if metric, err := ms.Fetch(tt.args.name); tt.wantErr {
+			if metric, err := ms.Fetch(context.Background(), tt.args.name); tt.wantErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)

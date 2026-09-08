@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,10 +20,10 @@ import (
 var ErrSendFailed = errors.New("failed to send metrics")
 
 type storager interface {
-	Update(metric models.Metric) error
-	UpdateBatch(metrics []models.Metric) error
-	FetchAll() []models.Metric
-	Fetch(name string) (models.Metric, error)
+	Update(ctx context.Context, metric models.Metric) error
+	UpdateBatch(ctx context.Context, metrics []models.Metric) error
+	FetchAll(ctx context.Context) []models.Metric
+	Fetch(ctx context.Context, name string) (models.Metric, error)
 }
 
 type MetricService struct {
@@ -36,25 +37,25 @@ func NewMetricService(storage storager) *MetricService {
 	}
 }
 
-func (s *MetricService) Update(metric models.Metric) error {
-	return s.storage.Update(metric)
+func (s *MetricService) Update(ctx context.Context, metric models.Metric) error {
+	return s.storage.Update(ctx, metric)
 }
 
 // UpdateBatch applies a batch of metrics in a single storage call, so that in
 // synchronous mode the file is written once per request, not once per metric.
-func (s *MetricService) UpdateBatch(metrics []models.Metric) error {
-	return s.storage.UpdateBatch(metrics)
+func (s *MetricService) UpdateBatch(ctx context.Context, metrics []models.Metric) error {
+	return s.storage.UpdateBatch(ctx, metrics)
 }
 
-func (s *MetricService) Fetch(ID string) (models.Metric, error) {
-	return s.storage.Fetch(ID)
+func (s *MetricService) Fetch(ctx context.Context, ID string) (models.Metric, error) {
+	return s.storage.Fetch(ctx, ID)
 }
 
-func (s *MetricService) FetchAll() []models.Metric {
-	return s.storage.FetchAll()
+func (s *MetricService) FetchAll(ctx context.Context) []models.Metric {
+	return s.storage.FetchAll(ctx)
 }
 
-func (s *MetricService) Collect() error {
+func (s *MetricService) Collect(ctx context.Context) error {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
@@ -92,15 +93,15 @@ func (s *MetricService) Collect() error {
 	}
 
 	for _, g := range gauges {
-		if err := s.Update(models.Metric{ID: g.name, MType: models.MetricTypeGauge, Value: models.Ptr(g.value)}); err != nil {
+		if err := s.Update(ctx, models.Metric{ID: g.name, MType: models.MetricTypeGauge, Value: models.Ptr(g.value)}); err != nil {
 			return err
 		}
 	}
 
-	if err := s.Update(models.Metric{ID: "RandomValue", MType: models.MetricTypeGauge, Value: models.Ptr(rand.Float64())}); err != nil {
+	if err := s.Update(ctx, models.Metric{ID: "RandomValue", MType: models.MetricTypeGauge, Value: models.Ptr(rand.Float64())}); err != nil {
 		return err
 	}
-	if err := s.Update(models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}); err != nil {
+	if err := s.Update(ctx, models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}); err != nil {
 		return err
 	}
 
@@ -109,8 +110,8 @@ func (s *MetricService) Collect() error {
 
 // Send reports every collected metric to the server in a single gzipped
 // request to POST /updates/.
-func (s *MetricService) Send(host string) error {
-	metrics := s.storage.FetchAll()
+func (s *MetricService) Send(ctx context.Context, host string) error {
+	metrics := s.storage.FetchAll(ctx)
 
 	if len(metrics) == 0 {
 		return nil

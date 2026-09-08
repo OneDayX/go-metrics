@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"testing"
@@ -13,8 +14,8 @@ func TestPersister_SaveAndLoad(t *testing.T) {
 	tmpFile := t.TempDir() + "/metrics.json"
 
 	storage := NewMemStorage()
-	storage.Update(models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Value: models.Ptr(100.5)})
-	storage.Update(models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(42))})
+	storage.Update(context.Background(), models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Value: models.Ptr(100.5)})
+	storage.Update(context.Background(), models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(42))})
 
 	persister := NewPersister(storage, tmpFile, 1)
 	if err := persister.SaveMetrics(); err != nil {
@@ -41,8 +42,8 @@ func TestPersister_SaveAndLoad(t *testing.T) {
 		t.Fatalf("LoadMetrics failed: %v", err)
 	}
 
-	if len(storage2.FetchAll()) != 2 {
-		t.Errorf("Expected 2 metrics after load, got %d", len(storage2.FetchAll()))
+	if len(storage2.FetchAll(context.Background())) != 2 {
+		t.Errorf("Expected 2 metrics after load, got %d", len(storage2.FetchAll(context.Background())))
 	}
 }
 
@@ -50,7 +51,7 @@ func TestPersister_PeriodicSave(t *testing.T) {
 	tmpFile := t.TempDir() + "/metrics.json"
 
 	storage := NewMemStorage()
-	storage.Update(models.Metric{ID: "TestMetric", MType: models.MetricTypeGauge, Value: models.Ptr(123.0)})
+	storage.Update(context.Background(), models.Metric{ID: "TestMetric", MType: models.MetricTypeGauge, Value: models.Ptr(123.0)})
 
 	persister := NewPersister(storage, tmpFile, 1)
 	persister.Start()
@@ -69,7 +70,7 @@ func TestPersistentMemStorage_SyncSave(t *testing.T) {
 	persister := NewPersister(storage, tmpFile, 0)
 	pms := NewPersistentMemStorage(storage, persister)
 
-	pms.Update(models.Metric{ID: "Gauge1", MType: models.MetricTypeGauge, Value: models.Ptr(50.5)})
+	pms.Update(context.Background(), models.Metric{ID: "Gauge1", MType: models.MetricTypeGauge, Value: models.Ptr(50.5)})
 
 	data, err := os.ReadFile(tmpFile)
 	if err != nil {
@@ -98,7 +99,7 @@ func TestPersistentMemStorage_UpdateBatch(t *testing.T) {
 		{ID: "Gauge2", MType: models.MetricTypeGauge, Value: models.Ptr(2.5)},
 		{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(7))},
 	}
-	if err := pms.UpdateBatch(batch); err != nil {
+	if err := pms.UpdateBatch(context.Background(), batch); err != nil {
 		t.Fatalf("UpdateBatch failed: %v", err)
 	}
 
@@ -128,7 +129,7 @@ func TestPersistentMemStorage_UpdateBatchInvalidMetric(t *testing.T) {
 		{ID: "Gauge1", MType: models.MetricTypeGauge, Value: models.Ptr(1.5)},
 		{ID: "Broken", MType: models.MetricTypeGauge}, // nil value
 	}
-	if err := pms.UpdateBatch(batch); err == nil {
+	if err := pms.UpdateBatch(context.Background(), batch); err == nil {
 		t.Fatal("Expected an error for a metric with nil value")
 	}
 

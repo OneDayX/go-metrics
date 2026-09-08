@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,7 +48,7 @@ func TestMetricService_Update(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := repository.NewMemStorage()
 			s := NewMetricService(storage)
-			err := s.Update(tt.metric)
+			err := s.Update(context.Background(), tt.metric)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -72,10 +73,10 @@ func TestMetricService_Collect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := NewMetricService(repository.NewMemStorage())
-			err := m.Collect()
+			err := m.Collect(context.Background())
 			assert.NoError(t, err)
 
-			_, err = m.storage.Fetch(tt.metricName)
+			_, err = m.storage.Fetch(context.Background(), tt.metricName)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -94,12 +95,12 @@ func TestMetricService_Send_Success(t *testing.T) {
 	storage := repository.NewMemStorage()
 	svc := NewMetricService(storage)
 
-	err := svc.Update(models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
+	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
 	require.NoError(t, err)
-	err = svc.Update(models.Metric{ID: "testCounter", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(10))})
+	err = svc.Update(context.Background(), models.Metric{ID: "testCounter", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(10))})
 	require.NoError(t, err)
 
-	err = svc.Send(ts.Listener.Addr().String())
+	err = svc.Send(context.Background(), ts.Listener.Addr().String())
 	assert.NoError(t, err)
 }
 
@@ -107,10 +108,10 @@ func TestMetricService_Send_ServerError(t *testing.T) {
 	storage := repository.NewMemStorage()
 	svc := NewMetricService(storage)
 
-	err := svc.Update(models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
+	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send("localhost:1")
+	err = svc.Send(context.Background(), "localhost:1")
 	assert.Error(t, err)
 }
 
@@ -123,10 +124,10 @@ func TestMetricService_Send_NonOKStatus(t *testing.T) {
 	storage := repository.NewMemStorage()
 	svc := NewMetricService(storage)
 
-	err := svc.Update(models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
+	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(ts.Listener.Addr().String())
+	err = svc.Send(context.Background(), ts.Listener.Addr().String())
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send metric")

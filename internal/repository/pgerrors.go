@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -11,6 +12,12 @@ import (
 
 // isRetriablePgError reports whether a postgres failure is worth repeating.
 func isRetriablePgError(err error) bool {
+	// Nobody waits for the answer any more. Checked first because
+	// context.DeadlineExceeded also satisfies net.Error below.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		return isUnavailableCode(pgErr.Code)

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -29,7 +30,8 @@ func validateMetric(metric models.Metric) error {
 	return nil
 }
 
-func (ms *MemStorage) Update(metric models.Metric) error {
+// The in-memory methods take a context only to satisfy the storage interface.
+func (ms *MemStorage) Update(_ context.Context, metric models.Metric) error {
 	if err := validateMetric(metric); err != nil {
 		return err
 	}
@@ -46,16 +48,16 @@ func (ms *MemStorage) Update(metric models.Metric) error {
 }
 
 // UpdateBatch applies several metrics in one call.
-func (ms *MemStorage) UpdateBatch(metrics []models.Metric) error {
+func (ms *MemStorage) UpdateBatch(ctx context.Context, metrics []models.Metric) error {
 	for _, metric := range metrics {
-		if err := ms.Update(metric); err != nil {
+		if err := ms.Update(ctx, metric); err != nil {
 			return fmt.Errorf("failed to update metric %s: %w", metric.ID, err)
 		}
 	}
 	return nil
 }
 
-func (ms *MemStorage) FetchAll() []models.Metric {
+func (ms *MemStorage) FetchAll(_ context.Context) []models.Metric {
 	result := make([]models.Metric, 0, 30)
 	for _, metric := range ms.metrics {
 		result = append(result, metric)
@@ -63,7 +65,7 @@ func (ms *MemStorage) FetchAll() []models.Metric {
 	return result
 }
 
-func (ms *MemStorage) Fetch(ID string) (models.Metric, error) {
+func (ms *MemStorage) Fetch(_ context.Context, ID string) (models.Metric, error) {
 	if value, ok := ms.metrics[ID]; ok {
 		return value, nil
 	} else {

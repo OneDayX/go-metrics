@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type metricsBatchUpdater interface {
-	UpdateBatch(metrics []models.Metric) error
+	UpdateBatch(ctx context.Context, metrics []models.Metric) error
 }
 
 func (h *Handler) UpdatesJSON(svc metricsBatchUpdater) http.HandlerFunc {
@@ -51,7 +52,7 @@ func (h *Handler) UpdatesJSON(svc metricsBatchUpdater) http.HandlerFunc {
 			}
 		}
 
-		if err := svc.UpdateBatch(metrics); err != nil {
+		if err := svc.UpdateBatch(r.Context(), metrics); err != nil {
 			h.log.Error("failed to update metrics batch",
 				zap.String("uri", r.RequestURI),
 				zap.Int("count", len(metrics)),

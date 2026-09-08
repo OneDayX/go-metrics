@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 
@@ -28,7 +29,7 @@ const listTpl = `
 </html>`
 
 type metricLister interface {
-	FetchAll() []models.Metric
+	FetchAll(ctx context.Context) []models.Metric
 }
 
 // List returns an HTTP handler that renders all stored metrics.
@@ -47,7 +48,7 @@ func (h *Handler) List(svc metricLister) http.HandlerFunc {
 		metrics := struct {
 			Metrics []models.Metric
 		}{
-			Metrics: svc.FetchAll(),
+			Metrics: svc.FetchAll(r.Context()),
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

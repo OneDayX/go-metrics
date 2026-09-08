@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -70,7 +71,7 @@ func TestListHandler(t *testing.T) {
 			svc := service.NewMetricService(storage)
 
 			for _, metric := range tc.haveMetrics {
-				storage.Update(metric)
+				storage.Update(context.Background(), metric)
 			}
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)

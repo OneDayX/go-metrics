@@ -1,7 +1,9 @@
 package repository
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgerrcode"
@@ -22,6 +24,18 @@ func TestIsRetriablePgError(t *testing.T) {
 		{
 			name: "plain error",
 			err:  errors.New("something else"),
+			want: false,
+		},
+		{
+			name: "cancelled by the client",
+			err:  fmt.Errorf("exec: %w", context.Canceled),
+			want: false,
+		},
+		{
+			// context.DeadlineExceeded satisfies net.Error, so without an
+			// explicit check it would look like a temporary network fault.
+			name: "request timed out",
+			err:  fmt.Errorf("exec: %w", context.DeadlineExceeded),
 			want: false,
 		},
 	}
