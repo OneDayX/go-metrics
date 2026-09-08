@@ -38,19 +38,21 @@ func run() error {
 	defer logger.Sync()
 
 	// Storage is picked in order: database, then file, then memory only.
-	var db *database.DB
+	// An interface, not *database.DB: a nil pointer inside it would not be nil.
+	var db handler.Pinger
 	var persister *repository.Persister
 	var svc *service.MetricService
 
 	switch {
 	case cfg.DatabaseDSN != "":
-		db, err = database.New(ctx, cfg.DatabaseDSN)
+		pg, err := database.New(ctx, cfg.DatabaseDSN)
 		if err != nil {
 			return err
 		}
-		defer db.Close()
+		defer pg.Close()
+		db = pg
 
-		svc = service.NewMetricService(repository.NewDBStorage(db.Pool()))
+		svc = service.NewMetricService(repository.NewDBStorage(pg.Pool()))
 		logger.Info("storing metrics in the database")
 
 	case cfg.FileStoragePath != "":

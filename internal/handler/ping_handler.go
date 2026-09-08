@@ -10,19 +10,18 @@ import (
 
 const pingTimeout = 3 * time.Second
 
-type pinger interface {
+// Pinger checks that the database is alive. Exported so that main can hold it
+// as an interface: a nil *database.DB inside one would not be nil.
+type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// Ping returns an HTTP handler that checks the database connection.
-// It answers 200 OK when the database is reachable and 500 otherwise.
-func (h *Handler) Ping(db pinger) http.HandlerFunc {
+// Ping returns an HTTP handler that checks the database connection. Running
+// without a database is a valid setup, so that also answers 200.
+func (h *Handler) Ping(db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
-			h.log.Error("ping requested but database is not configured",
-				zap.String("uri", r.RequestURI),
-			)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 

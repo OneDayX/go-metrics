@@ -23,7 +23,7 @@ func (p stubPinger) Ping(ctx context.Context) error {
 func TestPingHandler(t *testing.T) {
 	tests := []struct {
 		name string
-		db   pinger
+		db   Pinger
 		want int
 	}{
 		{
@@ -37,9 +37,10 @@ func TestPingHandler(t *testing.T) {
 			want: http.StatusInternalServerError,
 		},
 		{
+			// Running without a database is a valid setup.
 			name: "database is not configured",
 			db:   nil,
-			want: http.StatusInternalServerError,
+			want: http.StatusOK,
 		},
 	}
 	for _, tc := range tests {
