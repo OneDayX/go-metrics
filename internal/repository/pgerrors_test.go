@@ -27,6 +27,29 @@ func TestIsRetriablePgError(t *testing.T) {
 			want: false,
 		},
 		{
+			// Class 40: the transaction was rolled back and can be repeated.
+			name: "serialization failure",
+			err:  &pgconn.PgError{Code: pgerrcode.SerializationFailure},
+			want: true,
+		},
+		{
+			name: "deadlock detected",
+			err:  &pgconn.PgError{Code: pgerrcode.DeadlockDetected},
+			want: true,
+		},
+		{
+			// Also Class 40, but a retry would hit the same constraint.
+			name: "integrity constraint violation is not retried",
+			err:  &pgconn.PgError{Code: pgerrcode.TransactionIntegrityConstraintViolation},
+			want: false,
+		},
+		{
+			// The statement may have committed, and the upsert is not idempotent.
+			name: "unknown completion is not retried",
+			err:  &pgconn.PgError{Code: pgerrcode.StatementCompletionUnknown},
+			want: false,
+		},
+		{
 			name: "cancelled by the client",
 			err:  fmt.Errorf("exec: %w", context.Canceled),
 			want: false,

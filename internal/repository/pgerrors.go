@@ -20,7 +20,7 @@ func isRetriablePgError(err error) bool {
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		return isUnavailableCode(pgErr.Code)
+		return isRetriableCode(pgErr.Code)
 	}
 
 	if pgconn.SafeToRetry(err) {
@@ -36,15 +36,20 @@ func isRetriablePgError(err error) bool {
 	return errors.As(err, &netErr)
 }
 
+// isRetriableCode reports whether a SQLSTATE is worth a second attempt.
 // Class 08 is the one the task names. The three codes
 // next to it come from Class 57 and cover a restart of the database.
-func isUnavailableCode(code string) bool {
+// The last two are from Class 40: the transaction was rolled back and can be
+// repeated. They are listed by name instead of pgerrcode.IsTransactionRollback,
+// which also covers 40002 and 40003, where a retry does not help.
+func isRetriableCode(code string) bool {
 	if pgerrcode.IsConnectionException(code) {
 		return true
 	}
 
 	switch code {
-	case pgerrcode.AdminShutdown, pgerrcode.CrashShutdown, pgerrcode.CannotConnectNow:
+	case pgerrcode.AdminShutdown, pgerrcode.CrashShutdown, pgerrcode.CannotConnectNow,
+		pgerrcode.SerializationFailure, pgerrcode.DeadlockDetected:
 		return true
 	default:
 		return false
