@@ -44,10 +44,6 @@ func run() error {
 
 	switch {
 	case cfg.DatabaseDSN != "":
-		if err := database.Migrate(cfg.DatabaseDSN); err != nil {
-			return err
-		}
-
 		db, err = database.New(ctx, cfg.DatabaseDSN)
 		if err != nil {
 			return err

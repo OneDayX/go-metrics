@@ -10,8 +10,8 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-// Migrate applies all pending migrations from the embedded migrations package.
-func Migrate(dsn string) error {
+// migrateSchema applies all pending migrations from the embedded package.
+func migrateSchema(dsn string) error {
 	source, err := iofs.New(migrations.FS, ".")
 	if err != nil {
 		return err

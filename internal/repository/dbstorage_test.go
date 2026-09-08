@@ -7,7 +7,6 @@ import (
 
 	"github.com/OneDayX/go-metrics/internal/database"
 	"github.com/OneDayX/go-metrics/internal/models"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,11 +19,11 @@ func newTestStorage(t *testing.T) *DBStorage {
 		t.Skip("TEST_DATABASE_DSN is not set, skipping database tests")
 	}
 
-	require.NoError(t, database.Migrate(dsn))
-
-	pool, err := pgxpool.New(context.Background(), dsn)
+	db, err := database.New(context.Background(), dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	t.Cleanup(db.Close)
+
+	pool := db.Pool()
 
 	_, err = pool.Exec(context.Background(), `TRUNCATE metrics`)
 	require.NoError(t, err)
