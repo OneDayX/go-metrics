@@ -20,9 +20,9 @@ func TestDo(t *testing.T) {
 		{name: "does not retry a permanent error", failures: 99, retriable: false, wantCalls: 1},
 	}
 
-	original := delays
-	delays = []time.Duration{0, 0, 0}
-	defer func() { delays = original }()
+	original := Delays
+	Delays = []time.Duration{0, 0, 0}
+	defer func() { Delays = original }()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

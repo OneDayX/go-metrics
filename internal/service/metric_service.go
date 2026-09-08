@@ -7,13 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
-	"net"
 	"net/http"
 	"runtime"
 
 	"github.com/OneDayX/go-metrics/internal/compress"
+	"github.com/OneDayX/go-metrics/internal/httpclient"
 	"github.com/OneDayX/go-metrics/internal/models"
-	"github.com/OneDayX/go-metrics/internal/retry"
 )
 
 // ErrSendFailed means the server answered the agent, but not with 200.
@@ -27,13 +26,16 @@ type storager interface {
 }
 
 type MetricService struct {
-	storage       storager
+	storage storager
+	// client repeats requests that never reached the server.
+	client        *httpclient.Client
 	lastPollCount int64
 }
 
 func NewMetricService(storage storager) *MetricService {
 	return &MetricService{
 		storage: storage,
+		client:  httpclient.New(nil),
 	}
 }
 
@@ -137,7 +139,7 @@ func (s *MetricService) Send(ctx context.Context, host string) error {
 		return err
 	}
 
-	if err := retry.Do(func() error { return post(host, compressed) }, isRetriableSendError); err != nil {
+	if err := s.post(ctx, host, compressed); err != nil {
 		return err
 	}
 
@@ -146,17 +148,16 @@ func (s *MetricService) Send(ctx context.Context, host string) error {
 	return nil
 }
 
-// post sends one gzipped batch. It builds a fresh request on every call,
-// because a retried request cannot reuse a body reader that is already drained.
-func post(host string, body []byte) error {
-	req, err := http.NewRequest(http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(body))
+// post sends one gzipped batch. Repeating a failed attempt is the client's job.
+func (s *MetricService) post(ctx context.Context, host string, body []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -167,12 +168,4 @@ func post(host string, body []byte) error {
 	}
 
 	return nil
-}
-
-// isRetriableSendError reports whether the server was simply unreachable.
-// A network failure is worth another try; an answer we did not like means the
-// server is alive and would reject the same batch again.
-func isRetriableSendError(err error) bool {
-	var netErr net.Error
-	return errors.As(err, &netErr)
 }
