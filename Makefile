@@ -29,11 +29,11 @@ build-server: ## Build the server binary
 build-agent: ## Build the agent binary
 	$(GO) build -o $(AGENT_BINARY) ./cmd/agent
 
-test: ## Run unit tests (database tests are skipped)
-	$(GO) test ./...
+test: ## Run unit tests under the race detector (database tests are skipped)
+	$(GO) test -race ./...
 
 test-db: db-up ## Run unit tests including the ones that need postgres
-	TEST_DATABASE_DSN='$(DATABASE_DSN)' $(GO) test ./...
+	TEST_DATABASE_DSN='$(DATABASE_DSN)' $(GO) test -race ./...
 
 vet: ## Run go vet
 	$(GO) vet ./...
@@ -59,6 +59,10 @@ db-up: ## Start the local postgres used by iterations 10+
 			-p $(PG_PORT):5432 $(PG_IMAGE)
 	@until docker exec $(PG_CONTAINER) pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 	@echo "postgres ready on localhost:$(PG_PORT)"
+
+db-reset: db-up ## Empty the metrics table before an autotest run
+	@docker exec $(PG_CONTAINER) psql -U postgres -d praktikum -c 'TRUNCATE metrics;' >/dev/null
+	@echo "metrics table emptied"
 
 db-down: ## Stop the local postgres
 	-docker rm -f $(PG_CONTAINER)
