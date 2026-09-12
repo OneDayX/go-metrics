@@ -4,10 +4,12 @@ SERVER_BINARY := cmd/server/server
 AGENT_BINARY  := cmd/agent/agent
 
 # Iteration checked by `make iter`, override as `make iter ITER=11`.
-ITER ?= 13
+ITER ?= 14
 
 SERVER_PORT ?= 4000
 TEMP_FILE   ?= /tmp/metrics-db-test.json
+# Signing key for iterations 14+; metricstest hands it to the agent and server.
+KEY         ?= metrics-test-key
 export ADDRESS := localhost:$(SERVER_PORT)
 
 PG_CONTAINER ?= praktikum-pg
@@ -47,6 +49,7 @@ iter: build ## Run metricstest for one iteration (make iter ITER=10)
 		-binary-path=$(SERVER_BINARY) \
 		-database-dsn='$(DATABASE_DSN)' \
 		-file-storage-path=$(TEMP_FILE) \
+		-key='$(KEY)' \
 		-server-port=$(SERVER_PORT) \
 		-source-path=.
 
