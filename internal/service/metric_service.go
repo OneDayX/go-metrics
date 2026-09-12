@@ -13,6 +13,7 @@ import (
 	"github.com/OneDayX/go-metrics/internal/compress"
 	"github.com/OneDayX/go-metrics/internal/httpclient"
 	"github.com/OneDayX/go-metrics/internal/models"
+	"github.com/OneDayX/go-metrics/internal/sign"
 )
 
 // ErrSendFailed means the server answered the agent, but not with 200.
@@ -111,8 +112,8 @@ func (s *MetricService) Collect(ctx context.Context) error {
 }
 
 // Send reports every collected metric to the server in a single gzipped
-// request to POST /updates/.
-func (s *MetricService) Send(ctx context.Context, host string) error {
+// request to POST /updates/. A non-empty key signs the uncompressed body.
+func (s *MetricService) Send(ctx context.Context, host, key string) error {
 	metrics := s.storage.FetchAll(ctx)
 
 	if len(metrics) == 0 {
@@ -139,7 +140,13 @@ func (s *MetricService) Send(ctx context.Context, host string) error {
 		return err
 	}
 
-	if err := s.post(ctx, host, compressed); err != nil {
+	// The server checks the signature after decompressing, so it covers the JSON.
+	var signature string
+	if key != "" {
+		signature = sign.Sum(body, key)
+	}
+
+	if err := s.post(ctx, host, compressed, signature); err != nil {
 		return err
 	}
 
@@ -149,13 +156,16 @@ func (s *MetricService) Send(ctx context.Context, host string) error {
 }
 
 // post sends one gzipped batch. Repeating a failed attempt is the client's job.
-func (s *MetricService) post(ctx context.Context, host string, body []byte) error {
+func (s *MetricService) post(ctx context.Context, host string, body []byte, signature string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
+	if signature != "" {
+		req.Header.Set(sign.Header, signature)
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {

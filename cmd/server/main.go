@@ -83,6 +83,11 @@ func run() error {
 	r := chi.NewRouter()
 	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.Logger(logger))
+	// After gzip, so the signatures cover the plain body; after the logger, so
+	// rejected requests are logged too.
+	if cfg.Key != "" {
+		r.Use(middleware.Hash(cfg.Key))
+	}
 
 	// Metrictest sending weird requests with trailing slashes, so we add StripSlashes middleware
 	r.Use(chimw.StripSlashes)

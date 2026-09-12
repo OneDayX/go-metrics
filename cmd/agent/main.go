@@ -44,7 +44,7 @@ func run() error {
 			}
 
 		case <-reportTicker.C:
-			if err := svc.Send(ctx, cfg.ServerAddr); err != nil {
+			if err := svc.Send(ctx, cfg.ServerAddr, cfg.Key); err != nil {
 				log.Printf("error sending metrics: %v", err)
 			}
 		}
