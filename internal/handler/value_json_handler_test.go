@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +73,7 @@ func TestJSONValueHandler(t *testing.T) {
 			svc := service.NewMetricService(storage)
 
 			if tt.haveMetric.ID != "" {
-				require.NoError(t, storage.Update(tt.haveMetric))
+				require.NoError(t, storage.Update(context.Background(), tt.haveMetric))
 			}
 
 			req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(tt.body))
@@ -93,7 +94,7 @@ func TestJSONValueHandlerReturnsStoredMetric(t *testing.T) {
 	svc := service.NewMetricService(storage)
 
 	haveMetric := models.Metric{ID: "LastGC", MType: models.MetricTypeGauge, Value: models.Ptr(float64(1744184459))}
-	require.NoError(t, storage.Update(haveMetric))
+	require.NoError(t, storage.Update(context.Background(), haveMetric))
 
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(`{"id":"LastGC","type":"gauge"}`))
 	req.Header.Set("Content-Type", "application/json")

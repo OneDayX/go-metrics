@@ -1,31 +1,37 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
 type Persister struct {
+	mu       sync.Mutex
 	storage  *MemStorage
 	filePath string
 	interval time.Duration
 	ticker   *time.Ticker
 }
 
-func NewPersister(storage *MemStorage, filePath string, intervalSeconds int) *Persister {
+func NewPersister(storage *MemStorage, filePath string, interval time.Duration) *Persister {
 	return &Persister{
 		storage:  storage,
 		filePath: filePath,
-		interval: time.Duration(intervalSeconds) * time.Second,
+		interval: interval,
 	}
 }
 
 func (p *Persister) SaveMetrics() error {
-	metrics := p.storage.FetchAll()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	metrics := p.storage.FetchAll(context.Background())
 	data, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal metrics: %w", err)
@@ -53,7 +59,7 @@ func (p *Persister) LoadMetrics() error {
 	}
 
 	for _, metric := range metrics {
-		if err := p.storage.Update(metric); err != nil {
+		if err := p.storage.Update(context.Background(), metric); err != nil {
 			return fmt.Errorf("failed to update metric %s: %w", metric.ID, err)
 		}
 	}
@@ -62,7 +68,8 @@ func (p *Persister) LoadMetrics() error {
 }
 
 func (p *Persister) Start() {
-	if p.interval == 0 {
+	// Not just "== 0": time.NewTicker panics on any non-positive interval.
+	if p.interval <= 0 {
 		return
 	}
 
@@ -96,8 +103,8 @@ func NewPersistentMemStorage(storage *MemStorage, persister *Persister) *Persist
 	}
 }
 
-func (pms *PersistentMemStorage) Update(metric models.Metric) error {
-	err := pms.storage.Update(metric)
+func (pms *PersistentMemStorage) Update(ctx context.Context, metric models.Metric) error {
+	err := pms.storage.Update(ctx, metric)
 	if err != nil {
 		return err
 	}
@@ -108,8 +115,8 @@ func (pms *PersistentMemStorage) Update(metric models.Metric) error {
 
 // UpdateBatch applies the whole batch and writes the file once, instead of
 // rewriting it after every metric.
-func (pms *PersistentMemStorage) UpdateBatch(metrics []models.Metric) error {
-	err := pms.storage.UpdateBatch(metrics)
+func (pms *PersistentMemStorage) UpdateBatch(ctx context.Context, metrics []models.Metric) error {
+	err := pms.storage.UpdateBatch(ctx, metrics)
 
 	// Save even on a partial failure: metrics applied before the error are
 	// already in memory, so the file must not fall behind.
@@ -118,10 +125,10 @@ func (pms *PersistentMemStorage) UpdateBatch(metrics []models.Metric) error {
 	return err
 }
 
-func (pms *PersistentMemStorage) FetchAll() []models.Metric {
-	return pms.storage.FetchAll()
+func (pms *PersistentMemStorage) FetchAll(ctx context.Context) []models.Metric {
+	return pms.storage.FetchAll(ctx)
 }
 
-func (pms *PersistentMemStorage) Fetch(ID string) (models.Metric, error) {
-	return pms.storage.Fetch(ID)
+func (pms *PersistentMemStorage) Fetch(ctx context.Context, ID string) (models.Metric, error) {
+	return pms.storage.Fetch(ctx, ID)
 }

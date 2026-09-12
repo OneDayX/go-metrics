@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/OneDayX/go-metrics/internal/database"
 	"github.com/OneDayX/go-metrics/internal/handler"
 	"github.com/OneDayX/go-metrics/internal/repository"
 	"github.com/OneDayX/go-metrics/internal/server"
@@ -36,21 +37,45 @@ func run() error {
 	}
 	defer logger.Sync()
 
-	storage := repository.NewMemStorage()
-	persister := repository.NewPersister(storage, cfg.FileStoragePath, cfg.StoreInterval)
-
-	if cfg.Restore {
-		if err := persister.LoadMetrics(); err != nil {
-			logger.Error("failed to load metrics", zap.Error(err))
-		}
-	}
-
+	// Storage is picked in order: database, then file, then memory only.
+	// An interface, not *database.DB: a nil pointer inside it would not be nil.
+	var db handler.Pinger
+	var persister *repository.Persister
 	var svc *service.MetricService
-	if cfg.StoreInterval == 0 {
-		svc = service.NewMetricService(repository.NewPersistentMemStorage(storage, persister))
-	} else {
-		svc = service.NewMetricService(storage)
-		persister.Start()
+
+	switch {
+	case cfg.DatabaseDSN != "":
+		pg, err := database.New(ctx, cfg.DatabaseDSN)
+		if err != nil {
+			return err
+		}
+		defer pg.Close()
+		db = pg
+
+		svc = service.NewMetricService(repository.NewDBStorage(pg.Pool()))
+		logger.Info("storing metrics in the database")
+
+	case cfg.FileStoragePath != "":
+		storage := repository.NewMemStorage()
+		persister = repository.NewPersister(storage, cfg.FileStoragePath, cfg.StoreInterval)
+
+		if cfg.Restore {
+			if err := persister.LoadMetrics(); err != nil {
+				logger.Error("failed to load metrics", zap.Error(err))
+			}
+		}
+
+		if cfg.StoreInterval == 0 {
+			svc = service.NewMetricService(repository.NewPersistentMemStorage(storage, persister))
+		} else {
+			svc = service.NewMetricService(storage)
+			persister.Start()
+		}
+		logger.Info("storing metrics in a file", zap.String("path", cfg.FileStoragePath))
+
+	default:
+		svc = service.NewMetricService(repository.NewMemStorage())
+		logger.Info("storing metrics in memory only")
 	}
 
 	h := handler.NewHandler(logger)
@@ -64,10 +89,12 @@ func run() error {
 	r.Post("/update/{type}/{name}/{value}", h.Update(svc)) // POST /update/gauge/Alloc/1
 	r.Get("/", h.List(svc))                                // GET /
 	r.Get("/value/{type}/{name}", h.Get(svc))              // GET /value/gauge/Alloc
+	r.Get("/ping", h.Ping(db))                             // GET /ping
 
 	//JSON Routes
-	r.Post("/update", h.UpdateJSON(svc)) // POST /update and /update/
-	r.Post("/value", h.ValueJSON(svc))   // POST /value and /value/
+	r.Post("/update", h.UpdateJSON(svc))   // POST /update and /update/
+	r.Post("/updates", h.UpdatesJSON(svc)) // POST /updates and /updates/
+	r.Post("/value", h.ValueJSON(svc))     // POST /value and /value/
 
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
 	go func() {
@@ -78,7 +105,11 @@ func run() error {
 
 	// Wait for SIGINT/SIGTERM, then flush metrics to disk before exiting.
 	<-ctx.Done()
-	logger.Info("shutdown signal received, saving metrics")
+	logger.Info("shutdown signal received")
+
+	if persister == nil {
+		return nil
+	}
 
 	persister.Stop()
 	return persister.SaveMetrics()

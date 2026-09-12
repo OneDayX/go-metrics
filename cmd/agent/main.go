@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -18,29 +19,32 @@ func main() {
 func run() error {
 	cfg := agent.GetConfig()
 
+	// Nothing to cancel: the agent works until it is killed.
+	ctx := context.Background()
+
 	storage := repository.NewMemStorage()
 	svc := service.NewMetricService(storage)
 
-	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+	pollTicker := time.NewTicker(cfg.PollInterval)
 	defer pollTicker.Stop()
 
-	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+	reportTicker := time.NewTicker(cfg.ReportInterval)
 	defer reportTicker.Stop()
 
 	// Perform an immediate first poll so we have data ready.
-	if err := svc.Collect(); err != nil {
+	if err := svc.Collect(ctx); err != nil {
 		return err
 	}
 
 	for {
 		select {
 		case <-pollTicker.C:
-			if err := svc.Collect(); err != nil {
+			if err := svc.Collect(ctx); err != nil {
 				log.Printf("error collecting metrics: %v", err)
 			}
 
 		case <-reportTicker.C:
-			if err := svc.Send(cfg.ServerAddr); err != nil {
+			if err := svc.Send(ctx, cfg.ServerAddr); err != nil {
 				log.Printf("error sending metrics: %v", err)
 			}
 		}

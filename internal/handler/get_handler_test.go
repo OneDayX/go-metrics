@@ -43,7 +43,7 @@ func TestGetHandler(t *testing.T) {
 			storage := repository.NewMemStorage()
 			svc := service.NewMetricService(storage)
 
-			svc.Update(tc.haveMetric)
+			svc.Update(context.Background(), tc.haveMetric)
 
 			r := httptest.NewRequest(http.MethodGet, tc.path, nil)
 
