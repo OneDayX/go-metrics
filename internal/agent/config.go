@@ -16,6 +16,8 @@ const (
 
 type Config struct {
 	ServerAddr string `env:"ADDRESS"`
+	// Key signs every request body; an empty key sends requests unsigned.
+	Key string `env:"KEY"`
 
 	// Filled in GetConfig: the flags and the environment carry bare seconds,
 	// which env.Parse cannot read into a duration.
@@ -39,6 +41,7 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
 	flag.Int64Var(&intervals.Poll, "p", intervals.Poll, "poll interval in seconds")
 	flag.Int64Var(&intervals.Report, "r", intervals.Report, "report interval in seconds")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to sign requests with (unsigned if empty)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
