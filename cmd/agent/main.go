@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"log"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"github.com/OneDayX/go-metrics/internal/agent"
 	"github.com/OneDayX/go-metrics/internal/repository"
@@ -19,34 +20,11 @@ func main() {
 func run() error {
 	cfg := agent.GetConfig()
 
-	// Nothing to cancel: the agent works until it is killed.
-	ctx := context.Background()
+	// ctx is cancelled on SIGINT/SIGTERM, which stops every goroutine.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	storage := repository.NewMemStorage()
-	svc := service.NewMetricService(storage)
+	svc := service.NewMetricService(repository.NewMemStorage())
 
-	pollTicker := time.NewTicker(cfg.PollInterval)
-	defer pollTicker.Stop()
-
-	reportTicker := time.NewTicker(cfg.ReportInterval)
-	defer reportTicker.Stop()
-
-	// Perform an immediate first poll so we have data ready.
-	if err := svc.Collect(ctx); err != nil {
-		return err
-	}
-
-	for {
-		select {
-		case <-pollTicker.C:
-			if err := svc.Collect(ctx); err != nil {
-				log.Printf("error collecting metrics: %v", err)
-			}
-
-		case <-reportTicker.C:
-			if err := svc.Send(ctx, cfg.ServerAddr, cfg.Key); err != nil {
-				log.Printf("error sending metrics: %v", err)
-			}
-		}
-	}
+	return agent.New(cfg, svc).Run(ctx)
 }

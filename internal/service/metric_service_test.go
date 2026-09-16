@@ -102,8 +102,52 @@ func TestMetricService_Send_Success(t *testing.T) {
 	err = svc.Update(context.Background(), models.Metric{ID: "testCounter", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(10))})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "")
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", svc.Batch(context.Background()))
 	assert.NoError(t, err)
+}
+
+func TestMetricService_CollectSystem(t *testing.T) {
+	svc := NewMetricService(repository.NewMemStorage())
+
+	err := svc.CollectSystem(context.Background())
+	require.NoError(t, err)
+
+	for _, name := range []string{"TotalMemory", "FreeMemory", "CPUutilization1"} {
+		_, err := svc.storage.Fetch(context.Background(), name)
+		assert.NoError(t, err, name)
+	}
+}
+
+func TestMetricService_Batch_CountsIncrements(t *testing.T) {
+	svc := NewMetricService(repository.NewMemStorage())
+	counter := models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}
+
+	require.NoError(t, svc.Update(context.Background(), counter))
+	require.NoError(t, svc.Update(context.Background(), counter))
+
+	batch := svc.Batch(context.Background())
+	require.Len(t, batch, 1)
+	assert.Equal(t, int64(2), *batch[0].Delta)
+
+	require.NoError(t, svc.Update(context.Background(), counter))
+
+	batch = svc.Batch(context.Background())
+	require.Len(t, batch, 1)
+	assert.Equal(t, int64(1), *batch[0].Delta, "only what was collected since the last batch")
+}
+
+func TestMetricService_Send_ReturnsIncrementsOfAFailedBatch(t *testing.T) {
+	svc := NewMetricService(repository.NewMemStorage())
+	counter := models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}
+
+	require.NoError(t, svc.Update(context.Background(), counter))
+
+	err := svc.Send(context.Background(), "localhost:1", "", svc.Batch(context.Background()))
+	require.Error(t, err)
+
+	batch := svc.Batch(context.Background())
+	require.Len(t, batch, 1)
+	assert.Equal(t, int64(1), *batch[0].Delta, "the failed increment is counted again")
 }
 
 func TestMetricService_Send_WithKey(t *testing.T) {
@@ -119,7 +163,7 @@ func TestMetricService_Send_WithKey(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "secret")
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "secret", svc.Batch(context.Background()))
 	assert.NoError(t, err)
 }
 
@@ -130,7 +174,7 @@ func TestMetricService_Send_ServerError(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), "localhost:1", "")
+	err = svc.Send(context.Background(), "localhost:1", "", svc.Batch(context.Background()))
 	assert.Error(t, err)
 }
 
@@ -146,7 +190,7 @@ func TestMetricService_Send_NonOKStatus(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "")
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", svc.Batch(context.Background()))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send metric")
