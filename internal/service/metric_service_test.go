@@ -136,6 +136,24 @@ func TestMetricService_Batch_CountsIncrements(t *testing.T) {
 	assert.Equal(t, int64(1), *batch[0].Delta, "only what was collected since the last batch")
 }
 
+func TestMetricService_Batch_CountersAreIndependent(t *testing.T) {
+	svc := NewMetricService(repository.NewMemStorage())
+
+	require.NoError(t, svc.Update(context.Background(), models.Metric{ID: "A", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(10))}))
+	require.NoError(t, svc.Update(context.Background(), models.Metric{ID: "B", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(3))}))
+	svc.Batch(context.Background())
+
+	require.NoError(t, svc.Update(context.Background(), models.Metric{ID: "A", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}))
+	require.NoError(t, svc.Update(context.Background(), models.Metric{ID: "B", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(2))}))
+
+	deltas := map[string]int64{}
+	for _, metric := range svc.Batch(context.Background()) {
+		deltas[metric.ID] = *metric.Delta
+	}
+
+	assert.Equal(t, map[string]int64{"A": 1, "B": 2}, deltas)
+}
+
 func TestMetricService_Send_ReturnsIncrementsOfAFailedBatch(t *testing.T) {
 	svc := NewMetricService(repository.NewMemStorage())
 	counter := models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(1))}

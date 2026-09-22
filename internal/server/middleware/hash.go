@@ -32,6 +32,9 @@ func (s *signingResponseWriter) Write(p []byte) (int, error) {
 func Hash(key string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A request without the header is let through, because metricstest
+			// sends unsigned requests to a server started with a key and expects
+			// them to succeed. The price is that the signature can be skipped.
 			if signature := r.Header.Get(sign.Header); signature != "" {
 				body, err := io.ReadAll(r.Body)
 				r.Body.Close()

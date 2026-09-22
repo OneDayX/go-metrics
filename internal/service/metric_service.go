@@ -34,14 +34,17 @@ type MetricService struct {
 	// client repeats requests that never reached the server.
 	client *httpclient.Client
 
-	mu            sync.Mutex
-	lastPollCount int64
+	// reported holds, per counter name, how much of its total the agent has
+	// already sent; the server expects increments, not totals.
+	mu       sync.Mutex
+	reported map[string]int64
 }
 
 func NewMetricService(storage storager) *MetricService {
 	return &MetricService{
-		storage: storage,
-		client:  httpclient.New(nil),
+		storage:  storage,
+		client:   httpclient.New(nil),
+		reported: make(map[string]int64),
 	}
 }
 
@@ -161,8 +164,8 @@ func (s *MetricService) Batch(ctx context.Context) []models.Metric {
 
 	for i, metric := range metrics {
 		if metric.MType == models.MetricTypeCounter && metric.Delta != nil {
-			delta := *metric.Delta - s.lastPollCount
-			s.lastPollCount = *metric.Delta
+			delta := *metric.Delta - s.reported[metric.ID]
+			s.reported[metric.ID] = *metric.Delta
 
 			metrics[i].Delta = &delta
 		}
@@ -215,7 +218,7 @@ func (s *MetricService) unreport(metrics []models.Metric) {
 
 	for _, metric := range metrics {
 		if metric.MType == models.MetricTypeCounter && metric.Delta != nil {
-			s.lastPollCount -= *metric.Delta
+			s.reported[metric.ID] -= *metric.Delta
 		}
 	}
 }

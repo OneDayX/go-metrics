@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/OneDayX/go-metrics/internal/database"
 	"github.com/OneDayX/go-metrics/internal/handler"
@@ -17,6 +20,9 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 )
+
+// shutdownTimeout is how long the requests in progress get to finish.
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -101,23 +107,44 @@ func run() error {
 	r.Post("/updates", h.UpdatesJSON(svc)) // POST /updates and /updates/
 	r.Post("/value", h.ValueJSON(svc))     // POST /value and /value/
 
+	srv := &http.Server{Addr: cfg.ServerAddr, Handler: r}
+
+	// Buffered, so the goroutine can report the error and exit even when
+	// nobody is waiting for it anymore.
+	serveErr := make(chan error, 1)
+
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
 	go func() {
-		if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
-			logger.Fatal("server error", zap.Error(err))
+		// ErrServerClosed only means Shutdown was called, which is not a failure.
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
 		}
 	}()
 
-	// Wait for SIGINT/SIGTERM, then flush metrics to disk before exiting.
-	<-ctx.Done()
-	logger.Info("shutdown signal received")
+	// Stop on SIGINT/SIGTERM, or when the listener fails; the metrics are saved
+	// either way.
+	var runErr error
+	select {
+	case <-ctx.Done():
+		logger.Info("shutdown signal received")
+	case err := <-serveErr:
+		runErr = fmt.Errorf("server error: %w", err)
+		logger.Error("server error", zap.Error(err))
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("failed to shut down the server", zap.Error(err))
+	}
 
 	if persister == nil {
-		return nil
+		return runErr
 	}
 
 	persister.Stop()
-	return persister.SaveMetrics()
+	return errors.Join(runErr, persister.SaveMetrics())
 }
 
 // newLogger creates a zap logger. By default it writes JSON logs to stdout;
