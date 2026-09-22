@@ -1,0 +1,59 @@
+package handler
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+
+	"github.com/OneDayX/go-metrics/internal/models"
+	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
+)
+
+type metricFetcher interface {
+	Fetch(ctx context.Context, name string) (models.Metric, error)
+}
+
+// Get returns an HTTP handler that fetches a single metric by URL parameters.
+func (h *Handler) Get(svc metricFetcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mType := models.MetricType(chi.URLParam(r, "type"))
+		name := chi.URLParam(r, "name")
+		metric, err := svc.Fetch(r.Context(), name)
+
+		if err != nil {
+			h.log.Warn("failed to fetch metric",
+				zap.String("uri", r.RequestURI),
+				zap.String("name", name),
+				zap.Error(err),
+			)
+			w.WriteHeader(statusForError(err))
+			return
+		}
+
+		if mType != metric.MType {
+			h.log.Warn("metric type mismatch",
+				zap.String("uri", r.RequestURI),
+				zap.String("name", name),
+				zap.String("requested_type", string(mType)),
+				zap.String("actual_type", string(metric.MType)),
+			)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		switch mType {
+		case models.MetricTypeCounter:
+			w.Write([]byte(strconv.FormatInt(int64(*metric.Delta), 10)))
+		case models.MetricTypeGauge:
+			w.Write([]byte(strconv.FormatFloat(float64(*metric.Value), 'f', -1, 64)))
+		default:
+			h.log.Warn("unsupported metric type",
+				zap.String("uri", r.RequestURI),
+				zap.String("name", name),
+				zap.String("type", string(mType)),
+			)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}
+}
