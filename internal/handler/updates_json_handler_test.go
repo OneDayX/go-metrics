@@ -73,7 +73,7 @@ func TestJSONUpdatesHandler(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/updates/", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
 
-			h := NewHandler(nil)
+			h := NewHandler(nil, nil)
 			w := httptest.NewRecorder()
 
 			h.UpdatesJSON(svc)(w, req)
@@ -97,7 +97,7 @@ func TestJSONUpdatesHandlerStoresMetrics(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/updates/", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 	w := httptest.NewRecorder()
 
 	h.UpdatesJSON(svc)(w, req)

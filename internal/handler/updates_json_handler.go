@@ -62,6 +62,8 @@ func (h *Handler) UpdatesJSON(svc metricsBatchUpdater) http.HandlerFunc {
 			return
 		}
 
+		h.audit(r, metrics...)
+
 		w.WriteHeader(http.StatusOK)
 	}
 }

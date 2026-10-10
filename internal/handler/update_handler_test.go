@@ -74,7 +74,7 @@ func TestUpdateHandler(t *testing.T) {
 				chiCtx.URLParams.Add("value", params[4]) // Extract value from path
 			}
 
-			h := NewHandler(nil)
+			h := NewHandler(nil, nil)
 
 			w := httptest.NewRecorder()
 

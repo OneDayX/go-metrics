@@ -76,7 +76,7 @@ func TestListHandler(t *testing.T) {
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 
-			h := NewHandler(nil)
+			h := NewHandler(nil, nil)
 
 			w := httptest.NewRecorder()
 

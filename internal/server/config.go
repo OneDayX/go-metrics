@@ -19,6 +19,9 @@ type Config struct {
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	// Key checks request signatures and signs responses; empty turns both off.
 	Key string `env:"KEY"`
+	// Audit is off if the value is empty.
+	AuditFile string `env:"AUDIT_FILE"`
+	AuditURL  string `env:"AUDIT_URL"`
 
 	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
 	// which env.Parse cannot read into a duration. Zero means synchronous saving.
@@ -45,6 +48,8 @@ func GetConfig() Config {
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore metrics from file on startup")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database connection string (postgres DSN)")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to check and sign bodies with (off if empty)")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "file to append audit events to (off if empty)")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

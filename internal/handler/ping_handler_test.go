@@ -45,7 +45,7 @@ func TestPingHandler(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewHandler(nil)
+			h := NewHandler(nil, nil)
 
 			r := httptest.NewRequest(http.MethodGet, "/ping", nil)
 			w := httptest.NewRecorder()
