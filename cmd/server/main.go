@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/OneDayX/go-metrics/internal/audit"
 	"github.com/OneDayX/go-metrics/internal/database"
 	"github.com/OneDayX/go-metrics/internal/handler"
 	"github.com/OneDayX/go-metrics/internal/repository"
@@ -84,7 +85,8 @@ func run() error {
 		logger.Info("storing metrics in memory only")
 	}
 
-	h := handler.NewHandler(logger)
+	auditor := newAuditor(cfg, logger)
+	h := handler.NewHandler(logger, auditor)
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipMiddleware)
@@ -139,12 +141,32 @@ func run() error {
 		logger.Error("failed to shut down the server", zap.Error(err))
 	}
 
+	// The server is stopped, so we can send the rest of the audit events.
+	if err := auditor.Close(shutdownCtx); err != nil {
+		logger.Error("failed to deliver the remaining audit events", zap.Error(err))
+	}
+
 	if persister == nil {
 		return runErr
 	}
 
 	persister.Stop()
 	return errors.Join(runErr, persister.SaveMetrics())
+}
+
+// newAuditor creates the audit publisher. If both audit file and audit URL
+// are empty, it has no observers and audit is off.
+func newAuditor(cfg server.Config, logger *zap.Logger) *audit.Publisher {
+	publisher := audit.NewPublisher(logger)
+
+	if cfg.AuditFile != "" {
+		publisher.Subscribe(audit.NewFileObserver(cfg.AuditFile))
+	}
+	if cfg.AuditURL != "" {
+		publisher.Subscribe(audit.NewHTTPObserver(cfg.AuditURL))
+	}
+
+	return publisher
 }
 
 // newLogger creates a zap logger. By default it writes JSON logs to stdout;

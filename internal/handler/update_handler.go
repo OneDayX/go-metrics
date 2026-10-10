@@ -89,6 +89,8 @@ func (h *Handler) Update(svc metricUpdater) http.HandlerFunc {
 			return
 		}
 
+		h.audit(r, metric)
+
 		w.WriteHeader(http.StatusOK)
 	}
 }

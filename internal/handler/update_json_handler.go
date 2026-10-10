@@ -56,6 +56,8 @@ func (h *Handler) UpdateJSON(svc metricUpdaterJSON) http.HandlerFunc {
 			return
 		}
 
+		h.audit(r, metric)
+
 		w.WriteHeader(http.StatusOK)
 	}
 }
