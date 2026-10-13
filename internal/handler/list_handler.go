@@ -36,7 +36,8 @@ type metricLister interface {
 	FetchAll(ctx context.Context) []models.Metric
 }
 
-// List returns an HTTP handler that renders all stored metrics.
+// List returns the handler for GET /. It answers with an HTML table of the
+// names and values of all stored metrics.
 func (h *Handler) List(svc metricLister) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		metrics := struct {

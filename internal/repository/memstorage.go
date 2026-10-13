@@ -1,3 +1,6 @@
+// Package repository stores metrics: in memory (MemStorage), in memory with a
+// JSON file (Persister, PersistentMemStorage) or in PostgreSQL (DBStorage).
+// All storages have the same methods: Update, UpdateBatch, Fetch and FetchAll.
 package repository
 
 import (
@@ -9,6 +12,7 @@ import (
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
+// MemStorage keeps metrics in a map. It is safe for concurrent use.
 type MemStorage struct {
 	mu      sync.RWMutex
 	metrics map[string]models.Metric
@@ -40,7 +44,9 @@ func validateMetric(metric models.Metric) error {
 	return nil
 }
 
-// The in-memory methods take a context only to satisfy the storage interface.
+// Update saves one metric: a gauge replaces the old value, a counter is added
+// to it. The in-memory methods take a context only to satisfy the storage
+// interface.
 func (ms *MemStorage) Update(_ context.Context, metric models.Metric) error {
 	if err := validateMetric(metric); err != nil {
 		return err
@@ -82,6 +88,7 @@ func (ms *MemStorage) UpdateBatch(_ context.Context, metrics []models.Metric) er
 	return nil
 }
 
+// FetchAll returns all metrics in no particular order.
 func (ms *MemStorage) FetchAll(_ context.Context) []models.Metric {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -93,6 +100,8 @@ func (ms *MemStorage) FetchAll(_ context.Context) []models.Metric {
 	return result
 }
 
+// Fetch returns the metric with the given ID. If there is none, the error
+// wraps models.ErrMetricNotFound.
 func (ms *MemStorage) Fetch(_ context.Context, ID string) (models.Metric, error) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -104,6 +113,7 @@ func (ms *MemStorage) Fetch(_ context.Context, ID string) (models.Metric, error)
 	return models.Metric{}, fmt.Errorf("%w: %q", models.ErrMetricNotFound, ID)
 }
 
+// NewMemStorage returns an empty MemStorage.
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		metrics: make(map[string]models.Metric),

@@ -11,6 +11,8 @@ import (
 	"github.com/OneDayX/go-metrics/internal/models"
 )
 
+// Persister saves the metrics of a MemStorage to a JSON file and loads them
+// back on startup.
 type Persister struct {
 	mu       sync.Mutex
 	storage  *MemStorage
@@ -19,6 +21,8 @@ type Persister struct {
 	ticker   *time.Ticker
 }
 
+// NewPersister returns a Persister for the given storage and file. Start saves
+// the metrics every interval.
 func NewPersister(storage *MemStorage, filePath string, interval time.Duration) *Persister {
 	return &Persister{
 		storage:  storage,
@@ -27,6 +31,7 @@ func NewPersister(storage *MemStorage, filePath string, interval time.Duration) 
 	}
 }
 
+// SaveMetrics writes all metrics to the file, replacing what was there.
 func (p *Persister) SaveMetrics() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -44,6 +49,8 @@ func (p *Persister) SaveMetrics() error {
 	return nil
 }
 
+// LoadMetrics reads metrics from the file into the storage. A missing file is
+// not an error: there is just nothing to load.
 func (p *Persister) LoadMetrics() error {
 	data, err := os.ReadFile(p.filePath)
 	if err != nil {
@@ -67,6 +74,8 @@ func (p *Persister) LoadMetrics() error {
 	return nil
 }
 
+// Start saves the metrics every interval in a separate goroutine. It does
+// nothing if the interval is zero.
 func (p *Persister) Start() {
 	// Not just "== 0": time.NewTicker panics on any non-positive interval.
 	if p.interval <= 0 {
@@ -81,6 +90,7 @@ func (p *Persister) Start() {
 	}()
 }
 
+// Stop stops the saving started by Start. It does not save the metrics itself.
 func (p *Persister) Stop() {
 	if p.ticker != nil {
 		p.ticker.Stop()
@@ -103,6 +113,7 @@ func NewPersistentMemStorage(storage *MemStorage, persister *Persister) *Persist
 	}
 }
 
+// Update saves the metric in memory and writes the file right away.
 func (pms *PersistentMemStorage) Update(ctx context.Context, metric models.Metric) error {
 	err := pms.storage.Update(ctx, metric)
 	if err != nil {
@@ -125,10 +136,12 @@ func (pms *PersistentMemStorage) UpdateBatch(ctx context.Context, metrics []mode
 	return err
 }
 
+// FetchAll returns all metrics from memory.
 func (pms *PersistentMemStorage) FetchAll(ctx context.Context) []models.Metric {
 	return pms.storage.FetchAll(ctx)
 }
 
+// Fetch returns the metric with the given ID from memory.
 func (pms *PersistentMemStorage) Fetch(ctx context.Context, ID string) (models.Metric, error) {
 	return pms.storage.Fetch(ctx, ID)
 }

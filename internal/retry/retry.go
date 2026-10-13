@@ -7,6 +7,8 @@ import "time"
 // A variable so that tests can shorten the waits.
 var Delays = []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
+// Do calls fn and, while it fails with an error that isRetriable accepts,
+// calls it again after each of Delays. It returns the last error.
 func Do(fn func() error, isRetriable func(error) bool) error {
 	err := fn()
 

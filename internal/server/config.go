@@ -1,3 +1,4 @@
+// Package server holds the server config.
 package server
 
 import (
@@ -11,12 +12,14 @@ import (
 
 const defaultStoreIntervalSeconds = 300
 
+// Config holds the server settings.
 type Config struct {
-	ServerAddr      string `env:"ADDRESS"`
-	LogFile         string `env:"LOG_FILE"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH"`
-	Restore         bool   `env:"RESTORE"`
-	DatabaseDSN     string `env:"DATABASE_DSN"`
+	ServerAddr      string `env:"ADDRESS"`           // host:port to listen on
+	LogFile         string `env:"LOG_FILE"`          // logs go to stdout if empty
+	FileStoragePath string `env:"FILE_STORAGE_PATH"` // file to save metrics to
+	Restore         bool   `env:"RESTORE"`           // load metrics from the file on start
+	// DatabaseDSN turns on the PostgreSQL storage; the file is not used then.
+	DatabaseDSN string `env:"DATABASE_DSN"`
 	// Key checks request signatures and signs responses; empty turns both off.
 	Key string `env:"KEY"`
 	// Audit is off if the value is empty.
@@ -30,6 +33,9 @@ type Config struct {
 	StoreInterval time.Duration `env:"-"`
 }
 
+// GetConfig reads the config from the command line flags and the environment
+// variables; a variable wins over its flag. It stops the program if a value is
+// invalid.
 func GetConfig() Config {
 	cfg := Config{
 		ServerAddr:      "localhost:8080",

@@ -13,6 +13,12 @@ type metricsBatchUpdater interface {
 	UpdateBatch(ctx context.Context, metrics []models.Metric) error
 }
 
+// UpdatesJSON returns the handler for POST /updates. It saves a JSON array of
+// metrics in one storage call; this is how the agent sends its metrics. The
+// request needs Content-Type: application/json. An empty array saves nothing.
+//
+// Status codes: 200 if the metrics are saved, 400 if the body is not a JSON
+// array or a metric is invalid.
 func (h *Handler) UpdatesJSON(svc metricsBatchUpdater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {

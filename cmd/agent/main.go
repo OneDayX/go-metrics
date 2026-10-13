@@ -1,3 +1,5 @@
+// Agent collects runtime and system metrics and sends them to the server. The
+// flags and environment variables are described in internal/agent.Config.
 package main
 
 import (

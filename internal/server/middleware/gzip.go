@@ -1,3 +1,5 @@
+// Package middleware holds the HTTP middleware of the server: gzip, body
+// signatures and request logging.
 package middleware
 
 import (
@@ -147,6 +149,9 @@ func decompressRequest(r *http.Request) (*gzipReader, error) {
 	return gz, nil
 }
 
+// GzipMiddleware unpacks request bodies sent with Content-Encoding: gzip and
+// compresses JSON and HTML responses for clients that send
+// Accept-Encoding: gzip.
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gz, err := decompressRequest(r)

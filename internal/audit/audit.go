@@ -9,9 +9,9 @@ import (
 
 // Event is one audit record about the metrics received by the server.
 type Event struct {
-	TS        int64    `json:"ts"`
-	Metrics   []string `json:"metrics"`
-	IPAddress string   `json:"ip_address"`
+	TS        int64    `json:"ts"`         // unix time in seconds
+	Metrics   []string `json:"metrics"`    // names of the received metrics
+	IPAddress string   `json:"ip_address"` // IP address of the client
 }
 
 // Observer receives audit events.
@@ -28,6 +28,8 @@ type Publisher struct {
 	done      chan struct{}
 }
 
+// NewPublisher returns a Publisher with no observers and starts its sending
+// goroutine. Call Close to stop it.
 func NewPublisher(log *zap.Logger) *Publisher {
 	p := &Publisher{
 		log:    log,

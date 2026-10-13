@@ -8,7 +8,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// Value returns an HTTP handler that fetches a single metric by JSON.
+// ValueJSON returns the handler for POST /value. It reads the name and type
+// from the JSON body, for example {"id":"Alloc","type":"gauge"}, and answers
+// with the stored metric as JSON, with its value or delta filled in. The
+// request needs Content-Type: application/json.
+//
+// Status codes: 200 with the metric, 404 if there is no such metric, 400 if
+// the body is not valid JSON or the metric has another type.
 func (h *Handler) ValueJSON(svc metricFetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {

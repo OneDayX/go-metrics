@@ -1,3 +1,5 @@
+// Package service holds the metric logic on top of a storage. The server uses
+// it to save and read metrics, the agent to collect and send them.
 package service
 
 import (
@@ -29,6 +31,8 @@ type storager interface {
 	Fetch(ctx context.Context, name string) (models.Metric, error)
 }
 
+// MetricService works with metrics kept in a storage. It is safe for
+// concurrent use if the storage is.
 type MetricService struct {
 	storage storager
 	// client repeats requests that never reached the server.
@@ -40,6 +44,7 @@ type MetricService struct {
 	reported map[string]int64
 }
 
+// NewMetricService returns a MetricService that keeps metrics in storage.
 func NewMetricService(storage storager) *MetricService {
 	return &MetricService{
 		storage:  storage,
@@ -48,6 +53,8 @@ func NewMetricService(storage storager) *MetricService {
 	}
 }
 
+// Update saves one metric: a gauge replaces the old value, a counter is added
+// to it.
 func (s *MetricService) Update(ctx context.Context, metric models.Metric) error {
 	return s.storage.Update(ctx, metric)
 }
@@ -58,14 +65,19 @@ func (s *MetricService) UpdateBatch(ctx context.Context, metrics []models.Metric
 	return s.storage.UpdateBatch(ctx, metrics)
 }
 
+// Fetch returns the metric with the given ID. If there is none, the error
+// wraps models.ErrMetricNotFound.
 func (s *MetricService) Fetch(ctx context.Context, ID string) (models.Metric, error) {
 	return s.storage.Fetch(ctx, ID)
 }
 
+// FetchAll returns all stored metrics in no particular order.
 func (s *MetricService) FetchAll(ctx context.Context) []models.Metric {
 	return s.storage.FetchAll(ctx)
 }
 
+// Collect stores the runtime.MemStats fields and RandomValue as gauges and
+// adds one to the PollCount counter. The agent calls it on every poll.
 func (s *MetricService) Collect(ctx context.Context) error {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

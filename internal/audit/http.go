@@ -14,6 +14,7 @@ type HTTPObserver struct {
 	client *http.Client
 }
 
+// NewHTTPObserver returns an observer that posts events to url.
 func NewHTTPObserver(url string) *HTTPObserver {
 	return &HTTPObserver{
 		url:    url,
@@ -21,6 +22,7 @@ func NewHTTPObserver(url string) *HTTPObserver {
 	}
 }
 
+// Notify posts the event as JSON. Any answer other than 200 is an error.
 func (h *HTTPObserver) Notify(event Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {

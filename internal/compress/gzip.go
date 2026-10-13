@@ -1,3 +1,4 @@
+// Package compress packs and unpacks data with gzip.
 package compress
 
 import (

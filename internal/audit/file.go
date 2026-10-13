@@ -10,10 +10,13 @@ type FileObserver struct {
 	path string
 }
 
+// NewFileObserver returns an observer that writes to the file at path. The
+// file is created on the first event if it does not exist.
 func NewFileObserver(path string) *FileObserver {
 	return &FileObserver{path: path}
 }
 
+// Notify appends the event to the file.
 func (f *FileObserver) Notify(event Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {

@@ -19,10 +19,14 @@ type Agent struct {
 	svc *service.MetricService
 }
 
+// New returns an Agent that collects metrics with svc and sends them as cfg
+// says.
 func New(cfg Config, svc *service.MetricService) *Agent {
 	return &Agent{cfg: cfg, svc: svc}
 }
 
+// Run collects and sends metrics until ctx is cancelled. It returns an error
+// only if the very first poll fails.
 func (a *Agent) Run(ctx context.Context) error {
 	// Poll once right away, so the first report has something to send.
 	if err := a.svc.Collect(ctx); err != nil {

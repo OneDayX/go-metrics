@@ -15,7 +15,9 @@ const (
 	defaultRateLimit             = 1
 )
 
+// Config holds the agent settings.
 type Config struct {
+	// ServerAddr is the host:port of the server.
 	ServerAddr string `env:"ADDRESS"`
 	// Key signs every request body; an empty key sends requests unsigned.
 	Key string `env:"KEY"`
@@ -28,6 +30,9 @@ type Config struct {
 	ReportInterval time.Duration `env:"-"`
 }
 
+// GetConfig reads the config from the command line flags and the environment
+// variables; a variable wins over its flag. It stops the program if a value is
+// invalid.
 func GetConfig() Config {
 	cfg := Config{
 		ServerAddr: "localhost:8080",
