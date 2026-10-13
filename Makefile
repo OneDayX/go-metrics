@@ -17,8 +17,14 @@ PG_IMAGE     ?= postgres:16-alpine
 PG_PORT      ?= 5433
 DATABASE_DSN ?= postgres://postgres:postgres@localhost:$(PG_PORT)/praktikum?sslmode=disable
 
+# Memory profiling, see `make profile`.
+PPROF_ADDRESS ?= localhost:6060
+PROFILE       ?= base
+LOAD_DATA     := profiles/testdata
+LOAD_REQUESTS ?= 20000
+
 .DEFAULT_GOAL := help
-.PHONY: help build build-server build-agent test test-db vet fmt iter db-up db-down clean
+.PHONY: help build build-server build-agent test test-db bench vet fmt iter profile db-up db-down clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -37,6 +43,9 @@ test: ## Run unit tests under the race detector (database tests are skipped)
 test-db: db-up ## Run unit tests including the ones that need postgres
 	TEST_DATABASE_DSN='$(DATABASE_DSN)' $(GO) test -race ./...
 
+bench: ## Run the benchmarks
+	$(GO) test -run='^$$' -bench=. -benchmem ./...
+
 vet: ## Run go vet
 	$(GO) vet ./...
 
@@ -52,6 +61,22 @@ iter: build ## Run metricstest for one iteration (make iter ITER=10)
 		-key='$(KEY)' \
 		-server-port=$(SERVER_PORT) \
 		-source-path=.
+
+profile: build-server ## Load the server with hey and save its memory profile (make profile PROFILE=result)
+	gzip -c $(LOAD_DATA)/updates.json > $(LOAD_DATA)/updates.json.gz
+	@$(SERVER_BINARY) -f '' -l /dev/null -pprof $(PPROF_ADDRESS) & pid=$$!; \
+	sleep 1; \
+	echo "POST /updates/"; \
+	hey -n $(LOAD_REQUESTS) -c 50 -m POST -T application/json -H 'Content-Encoding: gzip' \
+		-D $(LOAD_DATA)/updates.json.gz http://$(ADDRESS)/updates/ | grep -E 'Requests/sec|\[200\]'; \
+	echo "POST /value/"; \
+	hey -n $(LOAD_REQUESTS) -c 50 -m POST -T application/json \
+		-D $(LOAD_DATA)/value.json http://$(ADDRESS)/value/ | grep -E 'Requests/sec|\[200\]'; \
+	echo "GET /"; \
+	hey -n $(LOAD_REQUESTS) -c 50 http://$(ADDRESS)/ | grep -E 'Requests/sec|\[200\]'; \
+	curl -s -o profiles/$(PROFILE).pprof http://$(PPROF_ADDRESS)/debug/pprof/allocs; \
+	kill $$pid
+	@echo "saved profiles/$(PROFILE).pprof"
 
 db-up: ## Start the local postgres used by iterations 10+
 	@docker inspect -f '{{.State.Running}}' $(PG_CONTAINER) 2>/dev/null | grep -q true \
