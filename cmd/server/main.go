@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // registers the /debug/pprof handlers in http.DefaultServeMux
 	"os/signal"
 	"syscall"
 	"time"
@@ -110,6 +111,16 @@ func run() error {
 	r.Post("/value", h.ValueJSON(svc))     // POST /value and /value/
 
 	srv := &http.Server{Addr: cfg.ServerAddr, Handler: r}
+
+	// pprof runs on its own address, so the profiles are not part of the API.
+	if cfg.PprofAddr != "" {
+		go func() {
+			logger.Info("starting pprof server", zap.String("addr", cfg.PprofAddr))
+			if err := http.ListenAndServe(cfg.PprofAddr, nil); err != nil {
+				logger.Error("pprof server error", zap.Error(err))
+			}
+		}()
+	}
 
 	// Buffered, so the goroutine can report the error and exit even when
 	// nobody is waiting for it anymore.
