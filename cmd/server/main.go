@@ -89,7 +89,10 @@ func run() error {
 		logger.Info("storing metrics in memory only")
 	}
 
-	auditor := newAuditor(cfg, logger)
+	auditor, err := newAuditor(cfg, logger)
+	if err != nil {
+		return err
+	}
 	h := handler.NewHandler(logger, auditor)
 
 	r := chi.NewRouter()
@@ -155,7 +158,8 @@ func run() error {
 		logger.Error("failed to shut down the server", zap.Error(err))
 	}
 
-	// The server is stopped, so we can send the rest of the audit events.
+	// The server is stopped, so we can send the rest of the audit events and
+	// close the audit file.
 	if err := auditor.Close(shutdownCtx); err != nil {
 		logger.Error("failed to deliver the remaining audit events", zap.Error(err))
 	}
@@ -170,17 +174,21 @@ func run() error {
 
 // newAuditor creates the audit publisher. If both audit file and audit URL
 // are empty, it has no observers and audit is off.
-func newAuditor(cfg server.Config, logger *zap.Logger) *audit.Publisher {
+func newAuditor(cfg server.Config, logger *zap.Logger) (*audit.Publisher, error) {
 	publisher := audit.NewPublisher(logger)
 
 	if cfg.AuditFile != "" {
-		publisher.Subscribe(audit.NewFileObserver(cfg.AuditFile))
+		file, err := audit.NewFileObserver(cfg.AuditFile)
+		if err != nil {
+			return nil, fmt.Errorf("open audit file: %w", err)
+		}
+		publisher.Subscribe(file)
 	}
 	if cfg.AuditURL != "" {
 		publisher.Subscribe(audit.NewHTTPObserver(cfg.AuditURL))
 	}
 
-	return publisher
+	return publisher, nil
 }
 
 // newLogger creates a zap logger. By default it writes JSON logs to stdout;
