@@ -25,7 +25,7 @@ LOAD_DATA     := profiles/testdata
 LOAD_REQUESTS ?= 20000
 
 .DEFAULT_GOAL := help
-.PHONY: help build build-server build-agent build-lint test test-db cover bench vet lint fmt iter profile db-up db-reset db-down clean
+.PHONY: help build build-server build-agent build-lint generate test test-db cover bench vet lint fmt iter profile db-up db-reset db-down clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -40,6 +40,9 @@ build-agent: ## Build the agent binary
 
 build-lint: ## Build the staticlint multichecker
 	$(GO) build -o $(LINT_BINARY) ./cmd/staticlint
+
+generate: ## Generate Reset methods for structs marked // generate:reset
+	$(GO) run ./cmd/reset
 
 test: ## Run unit tests under the race detector (database tests are skipped)
 	$(GO) test -race ./...
