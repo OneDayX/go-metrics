@@ -46,7 +46,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer logger.Sync()
+	// Sync often fails on stdout, and there is nowhere to report it anyway.
+	defer func() { _ = logger.Sync() }()
 
 	// Storage is picked in order: database, then file, then memory only.
 	// An interface, not *database.DB: a nil pointer inside it would not be nil.
