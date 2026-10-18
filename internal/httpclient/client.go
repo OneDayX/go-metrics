@@ -3,6 +3,7 @@
 package httpclient
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -38,11 +39,31 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			break
 		}
 
-		time.Sleep(delay)
+		if !wait(req.Context(), delay) {
+			break
+		}
+
 		resp, err = c.attempt(req)
 	}
 
 	return resp, err
+}
+
+// wait sleeps for delay and reports whether another attempt still makes sense.
+func wait(ctx context.Context, delay time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // attempt sends one copy of the request.

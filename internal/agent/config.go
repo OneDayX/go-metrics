@@ -12,10 +12,17 @@ import (
 const (
 	defaultPollIntervalSeconds   = 2
 	defaultReportIntervalSeconds = 10
+	defaultRateLimit             = 1
 )
 
+// Config holds the agent settings.
 type Config struct {
+	// ServerAddr is the host:port of the server.
 	ServerAddr string `env:"ADDRESS"`
+	// Key signs every request body; an empty key sends requests unsigned.
+	Key string `env:"KEY"`
+	// RateLimit is how many requests the agent may have in flight at once.
+	RateLimit int `env:"RATE_LIMIT"`
 
 	// Filled in GetConfig: the flags and the environment carry bare seconds,
 	// which env.Parse cannot read into a duration.
@@ -23,9 +30,13 @@ type Config struct {
 	ReportInterval time.Duration `env:"-"`
 }
 
+// GetConfig reads the config from the command line flags and the environment
+// variables; a variable wins over its flag. It stops the program if a value is
+// invalid.
 func GetConfig() Config {
 	cfg := Config{
 		ServerAddr: "localhost:8080",
+		RateLimit:  defaultRateLimit,
 	}
 
 	intervals := struct {
@@ -39,6 +50,8 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
 	flag.Int64Var(&intervals.Poll, "p", intervals.Poll, "poll interval in seconds")
 	flag.Int64Var(&intervals.Report, "r", intervals.Report, "report interval in seconds")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to sign requests with (unsigned if empty)")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "how many requests may be sent at once")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
@@ -46,6 +59,10 @@ func GetConfig() Config {
 	}
 	if err := env.Parse(&intervals); err != nil {
 		log.Fatalf("failed to parse environment variables: %v", err)
+	}
+
+	if cfg.RateLimit <= 0 {
+		log.Fatalf("rate limit must be positive, got %d", cfg.RateLimit)
 	}
 
 	cfg.PollInterval = secondsToDuration("poll interval", intervals.Poll)

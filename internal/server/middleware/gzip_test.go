@@ -98,3 +98,27 @@ func TestGzipMiddlewareCompressHTMLResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, body, string(decoded))
 }
+
+// The writers and readers come from a pool, so every request after the first
+// one gets a reused one.
+func TestGzipMiddlewareReusesWriterAndReader(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(got)
+	})
+
+	for _, body := range []string{`{"id":"a"}`, `{"id":"b","type":"gauge"}`, `{"id":"c"}`} {
+		req := httptest.NewRequest(http.MethodPost, "/value", gzipEncode(t, body))
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
+
+		rr := httptest.NewRecorder()
+		GzipMiddleware(next).ServeHTTP(rr, req)
+
+		decoded, err := compress.Decode(rr.Body)
+		require.NoError(t, err)
+		assert.Equal(t, body, string(decoded))
+	}
+}

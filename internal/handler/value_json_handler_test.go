@@ -79,7 +79,7 @@ func TestJSONValueHandler(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
 
-			h := NewHandler(nil)
+			h := NewHandler(nil, nil)
 			w := httptest.NewRecorder()
 
 			h.ValueJSON(svc)(w, req)
@@ -99,7 +99,7 @@ func TestJSONValueHandlerReturnsStoredMetric(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/value", strings.NewReader(`{"id":"LastGC","type":"gauge"}`))
 	req.Header.Set("Content-Type", "application/json")
 
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 	w := httptest.NewRecorder()
 
 	h.ValueJSON(svc)(w, req)

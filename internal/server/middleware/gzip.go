@@ -1,3 +1,5 @@
+// Package middleware holds the HTTP middleware of the server: gzip, body
+// signatures and request logging.
 package middleware
 
 import (
@@ -5,12 +7,23 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 var compressibleContentTypes = []string{
 	"application/json",
 	"text/html",
 }
+
+// Gzip writers and readers are reused between requests: a new writer
+// allocates about 800 KB on its first Write, which was the biggest
+// allocation in the memory profile.
+var (
+	gzipWriterPool = sync.Pool{
+		New: func() any { return gzip.NewWriter(io.Discard) },
+	}
+	gzipReaderPool sync.Pool
+)
 
 // gzipResponseWriter is a wrapper around http.ResponseWriter that compresses the response body.
 type gzipResponseWriter struct {
@@ -34,7 +47,8 @@ func (g *gzipResponseWriter) WriteHeader(statusCode int) {
 	g.wrote = true
 
 	if statusCode < 300 && shouldCompress(g.w.Header().Get("Content-Type")) {
-		g.gz = gzip.NewWriter(g.w)
+		g.gz = gzipWriterPool.Get().(*gzip.Writer)
+		g.gz.Reset(g.w)
 		g.w.Header().Set("Content-Encoding", "gzip")
 		g.w.Header().Add("Vary", "Accept-Encoding")
 		g.w.Header().Del("Content-Length")
@@ -53,11 +67,15 @@ func (g *gzipResponseWriter) Write(p []byte) (int, error) {
 	return g.w.Write(p)
 }
 
+// Close finishes the gzip stream and puts the writer back to the pool.
 func (g *gzipResponseWriter) Close() error {
-	if g.gz != nil {
-		return g.gz.Close()
+	if g.gz == nil {
+		return nil
 	}
-	return nil
+	err := g.gz.Close()
+	gzipWriterPool.Put(g.gz)
+	g.gz = nil
+	return err
 }
 
 // gzipReader is a wrapper around io.ReadCloser that decompresses the request body.
@@ -67,8 +85,11 @@ type gzipReader struct {
 }
 
 func newGzipReader(r io.ReadCloser) (*gzipReader, error) {
-	zr, err := gzip.NewReader(r)
-	if err != nil {
+	zr, ok := gzipReaderPool.Get().(*gzip.Reader)
+	if !ok {
+		zr = new(gzip.Reader)
+	}
+	if err := zr.Reset(r); err != nil {
 		return nil, err
 	}
 
@@ -108,29 +129,40 @@ func shouldCompress(contentType string) bool {
 	return false
 }
 
-func decompressRequest(r *http.Request) error {
+// decompressRequest replaces a gzipped body with a reader that unpacks it.
+// It returns nil if the body is not gzipped.
+func decompressRequest(r *http.Request) (*gzipReader, error) {
 	if !acceptsEncoding(r.Header.Get("Content-Encoding"), "gzip") {
-		return nil
+		return nil, nil
 	}
 
 	gz, err := newGzipReader(r.Body)
 	if err != nil {
 		r.Body.Close()
-		return err
+		return nil, err
 	}
 
 	r.Body = gz
 	r.Header.Del("Content-Encoding")
 	r.Header.Del("Content-Length")
 	r.ContentLength = -1
-	return nil
+	return gz, nil
 }
 
+// GzipMiddleware unpacks request bodies sent with Content-Encoding: gzip and
+// compresses JSON and HTML responses for clients that send
+// Accept-Encoding: gzip.
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := decompressRequest(r); err != nil {
+		gz, err := decompressRequest(r)
+		if err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
+		}
+		if gz != nil {
+			// The handler is done with the body when it returns, so the
+			// reader can go back to the pool.
+			defer gzipReaderPool.Put(gz.zr)
 		}
 
 		if acceptsEncoding(r.Header.Get("Accept-Encoding"), "gzip") {

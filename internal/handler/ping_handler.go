@@ -16,8 +16,9 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// Ping returns an HTTP handler that checks the database connection. Running
-// without a database is a valid setup, so that also answers 200.
+// Ping returns the handler for GET /ping. It answers 200 if the database is
+// reachable and 500 if not. Running without a database is a valid setup, so
+// with a nil db it also answers 200.
 func (h *Handler) Ping(db Pinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {

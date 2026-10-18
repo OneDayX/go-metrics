@@ -13,8 +13,12 @@ type metricUpdaterJSON interface {
 	Update(ctx context.Context, metric models.Metric) error
 }
 
-// Update returns an HTTP handler that updates a metric from URL parameters.
-// URL pattern: POST /update
+// UpdateJSON returns the handler for POST /update. It saves one metric from
+// the JSON body, for example {"id":"PollCount","type":"counter","delta":5}.
+// The request needs Content-Type: application/json.
+//
+// Status codes: 200 if the metric is saved, 400 if the body is not valid JSON,
+// the type is unknown or the metric has no value.
 func (h *Handler) UpdateJSON(svc metricUpdaterJSON) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
@@ -55,6 +59,8 @@ func (h *Handler) UpdateJSON(svc metricUpdaterJSON) http.HandlerFunc {
 			w.WriteHeader(statusForError(err))
 			return
 		}
+
+		h.audit(r, metric)
 
 		w.WriteHeader(http.StatusOK)
 	}

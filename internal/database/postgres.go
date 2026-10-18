@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// DB is a PostgreSQL connection pool.
 type DB struct {
 	pool *pgxpool.Pool
 }
@@ -27,6 +28,7 @@ func New(ctx context.Context, dsn string) (*DB, error) {
 	return &DB{pool: pool}, nil
 }
 
+// Pool returns the pgx pool for the storage.
 func (db *DB) Pool() *pgxpool.Pool {
 	return db.pool
 }
@@ -39,6 +41,7 @@ func (db *DB) Ping(ctx context.Context) error {
 	return db.pool.Ping(ctx)
 }
 
+// Close closes the pool. It is safe to call on a nil DB.
 func (db *DB) Close() {
 	if db == nil {
 		return

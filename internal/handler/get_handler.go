@@ -14,7 +14,11 @@ type metricFetcher interface {
 	Fetch(ctx context.Context, name string) (models.Metric, error)
 }
 
-// Get returns an HTTP handler that fetches a single metric by URL parameters.
+// Get returns the handler for GET /value/{type}/{name}. It answers with the
+// metric value as plain text: an integer for a counter, a number for a gauge.
+//
+// Status codes: 200 with the value, 404 if there is no such metric, 400 if
+// the metric has another type.
 func (h *Handler) Get(svc metricFetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		mType := models.MetricType(chi.URLParam(r, "type"))

@@ -28,23 +28,18 @@ const listTpl = `
 	</body>
 </html>`
 
+// listTemplate is parsed once, not on every request: parsing it each time
+// showed up in the memory profile.
+var listTemplate = template.Must(template.New("homepage").Parse(listTpl))
+
 type metricLister interface {
 	FetchAll(ctx context.Context) []models.Metric
 }
 
-// List returns an HTTP handler that renders all stored metrics.
+// List returns the handler for GET /. It answers with an HTML table of the
+// names and values of all stored metrics.
 func (h *Handler) List(svc metricLister) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		t, err := template.New("homepage").Parse(listTpl)
-		if err != nil {
-			h.log.Error("failed to parse metrics list template",
-				zap.String("uri", r.RequestURI),
-				zap.Error(err),
-			)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
 		metrics := struct {
 			Metrics []models.Metric
 		}{
@@ -52,9 +47,7 @@ func (h *Handler) List(svc metricLister) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		err = t.Execute(w, metrics)
-
-		if err != nil {
+		if err := listTemplate.Execute(w, metrics); err != nil {
 			h.log.Error("failed to execute metrics list template",
 				zap.String("uri", r.RequestURI),
 				zap.Error(err),

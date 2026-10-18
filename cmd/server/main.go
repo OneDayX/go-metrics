@@ -1,12 +1,20 @@
+// Server receives metrics from agents over HTTP and stores them in memory, in
+// a file or in PostgreSQL. The flags and environment variables are described
+// in internal/server.Config.
 package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // registers the /debug/pprof handlers in http.DefaultServeMux
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/OneDayX/go-metrics/internal/audit"
 	"github.com/OneDayX/go-metrics/internal/database"
 	"github.com/OneDayX/go-metrics/internal/handler"
 	"github.com/OneDayX/go-metrics/internal/repository"
@@ -17,6 +25,9 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 )
+
+// shutdownTimeout is how long the requests in progress get to finish.
+const shutdownTimeout = 10 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -78,11 +89,20 @@ func run() error {
 		logger.Info("storing metrics in memory only")
 	}
 
-	h := handler.NewHandler(logger)
+	auditor, err := newAuditor(cfg, logger)
+	if err != nil {
+		return err
+	}
+	h := handler.NewHandler(logger, auditor)
 
 	r := chi.NewRouter()
 	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.Logger(logger))
+	// After gzip, so the signatures cover the plain body; after the logger, so
+	// rejected requests are logged too.
+	if cfg.Key != "" {
+		r.Use(middleware.Hash(cfg.Key))
+	}
 
 	// Metrictest sending weird requests with trailing slashes, so we add StripSlashes middleware
 	r.Use(chimw.StripSlashes)
@@ -96,23 +116,79 @@ func run() error {
 	r.Post("/updates", h.UpdatesJSON(svc)) // POST /updates and /updates/
 	r.Post("/value", h.ValueJSON(svc))     // POST /value and /value/
 
+	srv := &http.Server{Addr: cfg.ServerAddr, Handler: r}
+
+	// pprof runs on its own address, so the profiles are not part of the API.
+	if cfg.PprofAddr != "" {
+		go func() {
+			logger.Info("starting pprof server", zap.String("addr", cfg.PprofAddr))
+			if err := http.ListenAndServe(cfg.PprofAddr, nil); err != nil {
+				logger.Error("pprof server error", zap.Error(err))
+			}
+		}()
+	}
+
+	// Buffered, so the goroutine can report the error and exit even when
+	// nobody is waiting for it anymore.
+	serveErr := make(chan error, 1)
+
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
 	go func() {
-		if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
-			logger.Fatal("server error", zap.Error(err))
+		// ErrServerClosed only means Shutdown was called, which is not a failure.
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
 		}
 	}()
 
-	// Wait for SIGINT/SIGTERM, then flush metrics to disk before exiting.
-	<-ctx.Done()
-	logger.Info("shutdown signal received")
+	// Stop on SIGINT/SIGTERM, or when the listener fails; the metrics are saved
+	// either way.
+	var runErr error
+	select {
+	case <-ctx.Done():
+		logger.Info("shutdown signal received")
+	case err := <-serveErr:
+		runErr = fmt.Errorf("server error: %w", err)
+		logger.Error("server error", zap.Error(err))
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("failed to shut down the server", zap.Error(err))
+	}
+
+	// The server is stopped, so we can send the rest of the audit events and
+	// close the audit file.
+	if err := auditor.Close(shutdownCtx); err != nil {
+		logger.Error("failed to deliver the remaining audit events", zap.Error(err))
+	}
 
 	if persister == nil {
-		return nil
+		return runErr
 	}
 
 	persister.Stop()
-	return persister.SaveMetrics()
+	return errors.Join(runErr, persister.SaveMetrics())
+}
+
+// newAuditor creates the audit publisher. If both audit file and audit URL
+// are empty, it has no observers and audit is off.
+func newAuditor(cfg server.Config, logger *zap.Logger) (*audit.Publisher, error) {
+	publisher := audit.NewPublisher(logger)
+
+	if cfg.AuditFile != "" {
+		file, err := audit.NewFileObserver(cfg.AuditFile)
+		if err != nil {
+			return nil, fmt.Errorf("open audit file: %w", err)
+		}
+		publisher.Subscribe(file)
+	}
+	if cfg.AuditURL != "" {
+		publisher.Subscribe(audit.NewHTTPObserver(cfg.AuditURL))
+	}
+
+	return publisher, nil
 }
 
 // newLogger creates a zap logger. By default it writes JSON logs to stdout;

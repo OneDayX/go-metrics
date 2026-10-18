@@ -24,10 +24,14 @@ type DBStorage struct {
 	pool *pgxpool.Pool
 }
 
+// NewDBStorage returns a DBStorage that uses the given pool. The metrics table
+// must already exist; database.New creates it.
 func NewDBStorage(pool *pgxpool.Pool) *DBStorage {
 	return &DBStorage{pool: pool}
 }
 
+// Update saves one metric: a gauge replaces the old value, a counter is added
+// to it. Temporary database errors are retried.
 func (ds *DBStorage) Update(ctx context.Context, metric models.Metric) error {
 	if err := validateMetric(metric); err != nil {
 		return err
@@ -81,6 +85,7 @@ func (ds *DBStorage) updateBatchOnce(ctx context.Context, metrics []models.Metri
 	return tx.Commit(ctx)
 }
 
+// FetchAll returns all metrics from the table, or nil if the query fails.
 func (ds *DBStorage) FetchAll(ctx context.Context) []models.Metric {
 	var result []models.Metric
 
@@ -117,6 +122,8 @@ func (ds *DBStorage) fetchAllOnce(ctx context.Context) ([]models.Metric, error) 
 	return result, rows.Err()
 }
 
+// Fetch returns the metric with the given ID. If there is none, the error
+// wraps models.ErrMetricNotFound.
 func (ds *DBStorage) Fetch(ctx context.Context, ID string) (models.Metric, error) {
 	var metric models.Metric
 

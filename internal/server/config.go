@@ -1,3 +1,4 @@
+// Package server holds the server config.
 package server
 
 import (
@@ -11,18 +12,30 @@ import (
 
 const defaultStoreIntervalSeconds = 300
 
+// Config holds the server settings.
 type Config struct {
-	ServerAddr      string `env:"ADDRESS"`
-	LogFile         string `env:"LOG_FILE"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH"`
-	Restore         bool   `env:"RESTORE"`
-	DatabaseDSN     string `env:"DATABASE_DSN"`
+	ServerAddr      string `env:"ADDRESS"`           // host:port to listen on
+	LogFile         string `env:"LOG_FILE"`          // logs go to stdout if empty
+	FileStoragePath string `env:"FILE_STORAGE_PATH"` // file to save metrics to
+	Restore         bool   `env:"RESTORE"`           // load metrics from the file on start
+	// DatabaseDSN turns on the PostgreSQL storage; the file is not used then.
+	DatabaseDSN string `env:"DATABASE_DSN"`
+	// Key checks request signatures and signs responses; empty turns both off.
+	Key string `env:"KEY"`
+	// Audit is off if the value is empty.
+	AuditFile string `env:"AUDIT_FILE"`
+	AuditURL  string `env:"AUDIT_URL"`
+	// PprofAddr serves net/http/pprof; profiling is off if the value is empty.
+	PprofAddr string `env:"PPROF_ADDRESS"`
 
 	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
 	// which env.Parse cannot read into a duration. Zero means synchronous saving.
 	StoreInterval time.Duration `env:"-"`
 }
 
+// GetConfig reads the config from the command line flags and the environment
+// variables; a variable wins over its flag. It stops the program if a value is
+// invalid.
 func GetConfig() Config {
 	cfg := Config{
 		ServerAddr:      "localhost:8080",
@@ -42,6 +55,10 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "path to file storage")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore metrics from file on startup")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database connection string (postgres DSN)")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to check and sign bodies with (off if empty)")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "file to append audit events to (off if empty)")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
+	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

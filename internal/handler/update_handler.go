@@ -14,8 +14,12 @@ type metricUpdater interface {
 	Update(ctx context.Context, metric models.Metric) error
 }
 
-// Update returns an HTTP handler that updates a metric from URL parameters.
-// URL pattern: POST /update/{type}/{name}/{value}
+// Update returns the handler for POST /update/{type}/{name}/{value}, for
+// example POST /update/counter/PollCount/5. The value must be an integer for
+// a counter and a number for a gauge.
+//
+// Status codes: 200 if the metric is saved, 400 if the type is unknown or the
+// value cannot be parsed.
 func (h *Handler) Update(svc metricUpdater) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		metricType := chi.URLParam(r, "type")
@@ -88,6 +92,8 @@ func (h *Handler) Update(svc metricUpdater) http.HandlerFunc {
 			w.WriteHeader(statusForError(err))
 			return
 		}
+
+		h.audit(r, metric)
 
 		w.WriteHeader(http.StatusOK)
 	}

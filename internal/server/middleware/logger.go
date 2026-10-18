@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -9,10 +10,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// maxBodySize caps how much of a request body is read. A batch of all runtime
-// metrics is a few kilobytes of JSON, so anything past this limit is not a
-// legitimate request and gets cut off.
-const maxBodySize = 16 << 10 // 16 KiB
+const (
+	// maxBodySize is a safety cap, not a size a real request gets close to: a
+	// batch of all the agent's metrics is a few kilobytes of JSON. A larger body
+	// is rejected as a whole, never passed on cut short.
+	maxBodySize = 1 << 20 // 1 MiB
+
+	// maxLoggedBody is how much of the body goes to the log.
+	maxLoggedBody = 4 << 10 // 4 KiB
+)
 
 type responseData struct {
 	status int
@@ -44,34 +50,49 @@ func Logger(log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
+			rw := &responseWriter{ResponseWriter: w}
 
 			fields := []zap.Field{
 				zap.String("uri", r.RequestURI),
 				zap.String("method", r.Method),
 			}
 
+			// Deferred, so that a rejected request is logged as well.
+			defer func() {
+				fields = append(fields,
+					zap.Duration("duration", time.Since(start)),
+					zap.Int("status", rw.responseData.status),
+					zap.Int("size", rw.responseData.size),
+				)
+				log.Info("request", fields...)
+			}()
+
 			if r.Method == http.MethodPost && r.Body != nil {
-				body, err := io.ReadAll(io.LimitReader(r.Body, maxBodySize))
-				if err == nil {
-					fields = append(fields, zap.String("body", string(body)))
-					// Restore the body so handlers can still read it.
-					r.Body = io.NopCloser(bytes.NewReader(body))
-				} else {
-					fields = append(fields, zap.String("body", ""))
+				body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodySize))
+				fields = append(fields, zap.ByteString("body", body[:min(len(body), maxLoggedBody)]))
+
+				if err != nil {
+					rejectBody(rw, err)
+					return
 				}
+
+				// Restore the body so handlers can still read it.
+				r.Body = io.NopCloser(bytes.NewReader(body))
 			}
 
-			rw := &responseWriter{ResponseWriter: w}
 			next.ServeHTTP(rw, r)
-
-			duration := time.Since(start)
-			fields = append(fields,
-				zap.Duration("duration", duration),
-				zap.Int("status", rw.responseData.status),
-				zap.Int("size", rw.responseData.size),
-			)
-
-			log.Info("request", fields...)
 		})
 	}
+}
+
+// rejectBody answers a request whose body could not be read in full.
+func rejectBody(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		status = http.StatusRequestEntityTooLarge
+	}
+
+	http.Error(w, http.StatusText(status), status)
 }
