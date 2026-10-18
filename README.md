@@ -43,6 +43,23 @@ git fetch template && git checkout template/v2 .github
 - **Hexagonal Architecture**
 - **Layered Architecture**
 
+## Сборка и версия
+
+При старте сервер и агент печатают в stdout версию, дату сборки и коммит. Значения задаются при сборке через `-ldflags`, без них выводится `N/A`:
+
+```
+Build version: 6830bc6
+Build date: 2026-10-18T12:05:37Z
+Build commit: 6830bc6
+```
+
+`make build` подставляет их сам: версия из `git describe --tags --always` (без тегов это хеш коммита), дата в UTC и короткий хеш коммита. Любое значение можно переопределить:
+
+```
+make build BUILD_VERSION=v1.0.0
+go build -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=2026-10-18 -X main.buildCommit=abc123" ./cmd/server
+```
+
 ## Статический анализ
 
 В `cmd/staticlint` лежит multichecker, код проекта должен проходить его без замечаний:

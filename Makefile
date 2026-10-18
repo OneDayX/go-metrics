@@ -4,6 +4,15 @@ SERVER_BINARY := cmd/server/server
 AGENT_BINARY  := cmd/agent/agent
 LINT_BINARY   := cmd/staticlint/staticlint
 
+# Build info printed by the server and the agent at start, override as
+# `make build BUILD_VERSION=v1.0.0`.
+BUILD_VERSION ?= $(shell git describe --tags --always 2>/dev/null)
+BUILD_DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILD_COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+LDFLAGS := -X main.buildVersion=$(BUILD_VERSION) \
+	-X main.buildDate=$(BUILD_DATE) \
+	-X main.buildCommit=$(BUILD_COMMIT)
+
 # Iteration checked by `make iter`, override as `make iter ITER=11`.
 ITER ?= 14
 
@@ -33,10 +42,10 @@ help: ## Show this help
 build: build-server build-agent ## Build both binaries
 
 build-server: ## Build the server binary
-	$(GO) build -o $(SERVER_BINARY) ./cmd/server
+	$(GO) build -ldflags '$(LDFLAGS)' -o $(SERVER_BINARY) ./cmd/server
 
 build-agent: ## Build the agent binary
-	$(GO) build -o $(AGENT_BINARY) ./cmd/agent
+	$(GO) build -ldflags '$(LDFLAGS)' -o $(AGENT_BINARY) ./cmd/agent
 
 build-lint: ## Build the staticlint multichecker
 	$(GO) build -o $(LINT_BINARY) ./cmd/staticlint
