@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -46,11 +47,12 @@ func (h *Handler) Get(svc metricFetcher) http.HandlerFunc {
 			return
 		}
 
+		var value string
 		switch mType {
 		case models.MetricTypeCounter:
-			w.Write([]byte(strconv.FormatInt(int64(*metric.Delta), 10)))
+			value = strconv.FormatInt(int64(*metric.Delta), 10)
 		case models.MetricTypeGauge:
-			w.Write([]byte(strconv.FormatFloat(float64(*metric.Value), 'f', -1, 64)))
+			value = strconv.FormatFloat(float64(*metric.Value), 'f', -1, 64)
 		default:
 			h.log.Warn("unsupported metric type",
 				zap.String("uri", r.RequestURI),
@@ -58,6 +60,15 @@ func (h *Handler) Get(svc metricFetcher) http.HandlerFunc {
 				zap.String("type", string(mType)),
 			)
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if _, err := io.WriteString(w, value); err != nil {
+			h.log.Error("failed to write metric value",
+				zap.String("uri", r.RequestURI),
+				zap.String("name", name),
+				zap.Error(err),
+			)
 		}
 	}
 }

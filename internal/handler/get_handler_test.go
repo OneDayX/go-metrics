@@ -12,6 +12,7 @@ import (
 	"github.com/OneDayX/go-metrics/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetHandler(t *testing.T) {
@@ -43,7 +44,7 @@ func TestGetHandler(t *testing.T) {
 			storage := repository.NewMemStorage()
 			svc := service.NewMetricService(storage)
 
-			svc.Update(context.Background(), tc.haveMetric)
+			require.NoError(t, svc.Update(context.Background(), tc.haveMetric))
 
 			r := httptest.NewRequest(http.MethodGet, tc.path, nil)
 

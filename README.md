@@ -43,6 +43,23 @@ git fetch template && git checkout template/v2 .github
 - **Hexagonal Architecture**
 - **Layered Architecture**
 
+## Статический анализ
+
+В `cmd/staticlint` лежит multichecker, код проекта должен проходить его без замечаний:
+
+```
+make lint                      # собрать cmd/staticlint/staticlint и проверить ./...
+go run ./cmd/staticlint ./...  # то же без make
+```
+
+В него входят стандартные анализаторы `golang.org/x/tools/go/analysis/passes`, все проверки класса SA из staticcheck, несколько проверок классов S, ST и QF, публичные `errcheck` и `bodyclose` и собственный `osexit`, который запрещает прямой вызов `os.Exit` в функции `main` пакета `main`. Запуск, флаги и назначение каждого анализатора описаны в документации пакета: `go doc ./cmd/staticlint`.
+
+## Покрытие тестами
+
+```
+make cover
+```
+
 ## Бенчмарки
 
 Бенчмарки лежат рядом с кодом в файлах `*_bench_test.go`: хранилище в памяти (`Update`, `UpdateBatch`, `FetchAll`), хендлеры (`/updates/`, `/value/`, `/`), gzip middleware, подпись (`sign.Sum`), сжатие на агенте (`compress.Encode`) и сбор метрик агентом (`Collect`).

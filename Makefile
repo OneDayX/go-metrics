@@ -2,6 +2,7 @@ GO := $(shell command -v go)
 
 SERVER_BINARY := cmd/server/server
 AGENT_BINARY  := cmd/agent/agent
+LINT_BINARY   := cmd/staticlint/staticlint
 
 # Iteration checked by `make iter`, override as `make iter ITER=11`.
 ITER ?= 14
@@ -24,7 +25,7 @@ LOAD_DATA     := profiles/testdata
 LOAD_REQUESTS ?= 20000
 
 .DEFAULT_GOAL := help
-.PHONY: help build build-server build-agent test test-db bench vet fmt iter profile db-up db-down clean
+.PHONY: help build build-server build-agent build-lint test test-db cover bench vet lint fmt iter profile db-up db-reset db-down clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -37,17 +38,27 @@ build-server: ## Build the server binary
 build-agent: ## Build the agent binary
 	$(GO) build -o $(AGENT_BINARY) ./cmd/agent
 
+build-lint: ## Build the staticlint multichecker
+	$(GO) build -o $(LINT_BINARY) ./cmd/staticlint
+
 test: ## Run unit tests under the race detector (database tests are skipped)
 	$(GO) test -race ./...
 
 test-db: db-up ## Run unit tests including the ones that need postgres
 	TEST_DATABASE_DSN='$(DATABASE_DSN)' $(GO) test -race ./...
 
+cover: ## Run unit tests and print the total coverage
+	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) tool cover -func=coverage.out | tail -1
+
 bench: ## Run the benchmarks
 	$(GO) test -run='^$$' -bench=. -benchmem ./...
 
 vet: ## Run go vet
 	$(GO) vet ./...
+
+lint: build-lint ## Run the staticlint multichecker on the whole project
+	./$(LINT_BINARY) ./...
 
 fmt: ## Format the source tree
 	$(GO) fmt ./...
@@ -96,4 +107,4 @@ db-down: ## Stop the local postgres
 	-docker rm -f $(PG_CONTAINER)
 
 clean: ## Remove built binaries
-	rm -f $(SERVER_BINARY) $(AGENT_BINARY)
+	rm -f $(SERVER_BINARY) $(AGENT_BINARY) $(LINT_BINARY)

@@ -37,7 +37,7 @@ func Hash(key string) func(http.Handler) http.Handler {
 			// them to succeed. The price is that the signature can be skipped.
 			if signature := r.Header.Get(sign.Header); signature != "" {
 				body, err := io.ReadAll(r.Body)
-				r.Body.Close()
+				_ = r.Body.Close()
 				if err != nil || !sign.Valid(body, key, signature) {
 					http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 					return

@@ -138,7 +138,7 @@ func decompressRequest(r *http.Request) (*gzipReader, error) {
 
 	gz, err := newGzipReader(r.Body)
 	if err != nil {
-		r.Body.Close()
+		_ = r.Body.Close()
 		return nil, err
 	}
 

@@ -14,8 +14,12 @@ func TestPersister_SaveAndLoad(t *testing.T) {
 	tmpFile := t.TempDir() + "/metrics.json"
 
 	storage := NewMemStorage()
-	storage.Update(context.Background(), models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Value: models.Ptr(100.5)})
-	storage.Update(context.Background(), models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(42))})
+	if err := storage.Update(context.Background(), models.Metric{ID: "Alloc", MType: models.MetricTypeGauge, Value: models.Ptr(100.5)}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if err := storage.Update(context.Background(), models.Metric{ID: "PollCount", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(42))}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
 
 	persister := NewPersister(storage, tmpFile, time.Second)
 	if err := persister.SaveMetrics(); err != nil {
@@ -51,7 +55,9 @@ func TestPersister_PeriodicSave(t *testing.T) {
 	tmpFile := t.TempDir() + "/metrics.json"
 
 	storage := NewMemStorage()
-	storage.Update(context.Background(), models.Metric{ID: "TestMetric", MType: models.MetricTypeGauge, Value: models.Ptr(123.0)})
+	if err := storage.Update(context.Background(), models.Metric{ID: "TestMetric", MType: models.MetricTypeGauge, Value: models.Ptr(123.0)}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
 
 	persister := NewPersister(storage, tmpFile, time.Second)
 	persister.Start()
@@ -70,7 +76,9 @@ func TestPersistentMemStorage_SyncSave(t *testing.T) {
 	persister := NewPersister(storage, tmpFile, 0)
 	pms := NewPersistentMemStorage(storage, persister)
 
-	pms.Update(context.Background(), models.Metric{ID: "Gauge1", MType: models.MetricTypeGauge, Value: models.Ptr(50.5)})
+	if err := pms.Update(context.Background(), models.Metric{ID: "Gauge1", MType: models.MetricTypeGauge, Value: models.Ptr(50.5)}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
 
 	data, err := os.ReadFile(tmpFile)
 	if err != nil {

@@ -31,7 +31,7 @@ func TestDo_RetriesUntilTheServerAnswers(t *testing.T) {
 		if atomic.AddInt32(&attempts, 1) <= 2 {
 			hijacked, _, err := w.(http.Hijacker).Hijack()
 			require.NoError(t, err)
-			hijacked.Close()
+			assert.NoError(t, hijacked.Close())
 			return
 		}
 
@@ -48,7 +48,7 @@ func TestDo_RetriesUntilTheServerAnswers(t *testing.T) {
 
 	resp, err := New(nil).Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, int32(3), atomic.LoadInt32(&attempts), "two failures, then success")
@@ -68,7 +68,7 @@ func TestDo_DoesNotRetryAnAnsweredRequest(t *testing.T) {
 
 	resp, err := New(nil).Do(req)
 	require.NoError(t, err, "a server answer is not a transport failure")
-	defer resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&attempts), "the server is alive, so nothing is repeated")
@@ -80,7 +80,7 @@ func TestDo_GivesUpOnAnUnreachableServer(t *testing.T) {
 
 	resp, err := New(nil).Do(req)
 	if resp != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 	assert.Error(t, err)
 }
@@ -93,7 +93,7 @@ func TestDo_DoesNotRepeatAnUnrewindableBody(t *testing.T) {
 		atomic.AddInt32(&attempts, 1)
 		hijacked, _, err := w.(http.Hijacker).Hijack()
 		require.NoError(t, err)
-		hijacked.Close()
+		assert.NoError(t, hijacked.Close())
 	}))
 	defer srv.Close()
 
@@ -104,7 +104,7 @@ func TestDo_DoesNotRepeatAnUnrewindableBody(t *testing.T) {
 
 	resp, err := New(nil).Do(req)
 	if resp != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 	assert.Error(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&attempts), "sent once, not repeated")

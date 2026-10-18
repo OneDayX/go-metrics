@@ -10,6 +10,7 @@ import (
 	"github.com/OneDayX/go-metrics/internal/repository"
 	"github.com/OneDayX/go-metrics/internal/service"
 	"github.com/longbridge/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestListHandler(t *testing.T) {
@@ -71,7 +72,7 @@ func TestListHandler(t *testing.T) {
 			svc := service.NewMetricService(storage)
 
 			for _, metric := range tc.haveMetrics {
-				storage.Update(context.Background(), metric)
+				require.NoError(t, storage.Update(context.Background(), metric))
 			}
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
