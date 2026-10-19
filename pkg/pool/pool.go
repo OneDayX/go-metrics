@@ -14,18 +14,25 @@ type Pool[T Resetter] struct {
 	pool sync.Pool
 }
 
-// New returns a pool that creates objects with newFn when it is empty.
+// New returns a pool that creates objects with newFn when it is empty. If
+// newFn is nil, Get on an empty pool returns the zero value of T, as sync.Pool
+// does without New.
 func New[T Resetter](newFn func() T) *Pool[T] {
 	p := &Pool[T]{}
-	p.pool.New = func() any {
-		return newFn()
+	if newFn != nil {
+		p.pool.New = func() any {
+			return newFn()
+		}
 	}
 	return p
 }
 
 // Get returns an object from the pool or a new one if the pool is empty.
 func (p *Pool[T]) Get() T {
-	return p.pool.Get().(T)
+	// sync.Pool returns nil when it is empty and has no New, then x is the
+	// zero value of T.
+	x, _ := p.pool.Get().(T)
+	return x
 }
 
 // Put resets x and puts it back to the pool. x must not be used after Put.

@@ -32,9 +32,9 @@ const shutdownTimeout = 10 * time.Second
 // Build info, set at build time with
 // -ldflags "-X main.buildVersion=... -X main.buildDate=... -X main.buildCommit=...".
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
 )
 
 func main() {
@@ -45,19 +45,11 @@ func main() {
 	}
 }
 
-// printBuildInfo prints the build info to stdout, N/A for the values that
-// were not set at build time.
+// printBuildInfo prints the build info to stdout.
 func printBuildInfo() {
-	fmt.Printf("Build version: %s\n", orNA(buildVersion))
-	fmt.Printf("Build date: %s\n", orNA(buildDate))
-	fmt.Printf("Build commit: %s\n", orNA(buildCommit))
-}
-
-func orNA(s string) string {
-	if s == "" {
-		return "N/A"
-	}
-	return s
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 }
 
 func run() error {

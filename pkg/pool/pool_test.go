@@ -33,6 +33,15 @@ func TestPutResets(t *testing.T) {
 	assert.Equal(t, 64, cap(b.data))
 }
 
+func TestGetWithoutNew(t *testing.T) {
+	p := pool.New[*buffer](nil)
+
+	// Like sync.Pool without New, an empty pool returns the zero value.
+	var b *buffer
+	assert.NotPanics(t, func() { b = p.Get() })
+	assert.Nil(t, b)
+}
+
 // Get a buffer, use it and put it back: the next Get returns a clean buffer.
 func Example() {
 	p := pool.New(newBuffer)
