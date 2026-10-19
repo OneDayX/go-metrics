@@ -6,9 +6,9 @@ LINT_BINARY   := cmd/staticlint/staticlint
 
 # Build info printed by the server and the agent at start, override as
 # `make build BUILD_VERSION=v1.0.0`.
-BUILD_VERSION ?= $(shell git describe --tags --always 2>/dev/null)
+BUILD_VERSION ?= $(or $(shell git describe --tags --always 2>/dev/null),N/A)
 BUILD_DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-BUILD_COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+BUILD_COMMIT  ?= $(or $(shell git rev-parse --short HEAD 2>/dev/null),N/A)
 LDFLAGS := -X main.buildVersion=$(BUILD_VERSION) \
 	-X main.buildDate=$(BUILD_DATE) \
 	-X main.buildCommit=$(BUILD_COMMIT)
