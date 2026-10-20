@@ -60,6 +60,20 @@ make build BUILD_VERSION=v1.0.0
 go build -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=2026-10-18 -X main.buildCommit=abc123" ./cmd/server
 ```
 
+## Шифрование
+
+Агент может шифровать тела запросов публичным ключом сервера, а сервер расшифровывает их приватным ключом. Путь к ключу задаётся флагом `-crypto-key` или переменной `CRYPTO_KEY`: агенту — к публичному ключу, серверу — к приватному. Без ключа данные идут открыто, как раньше.
+
+Ключи RSA в формате PEM: публичный в PKIX (`BEGIN PUBLIC KEY`), приватный в PKCS #8 (`BEGIN PRIVATE KEY`). Пару создаёт `make keys` (нужен openssl):
+
+```
+make keys                                     # private.pem и public.pem в корне проекта
+./cmd/server/server -crypto-key private.pem
+./cmd/agent/agent -crypto-key public.pem
+```
+
+RSA за раз шифрует только несколько сотен байт, поэтому шифрование гибридное: агент сжимает батч и шифрует его случайным ключом AES-256-GCM, а сам этот ключ шифрует RSA-OAEP (SHA-256). Тело запроса — зашифрованный ключ, nonce и зашифрованные данные подряд. Сервер с ключом отвечает 400 на запрос, тело которого не удалось расшифровать; запросы без тела (`GET`, `POST /update/{type}/{name}/{value}`) проходят как обычно.
+
 ## Статический анализ
 
 В `cmd/staticlint` лежит multichecker, код проекта должен проходить его без замечаний:
