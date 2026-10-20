@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/OneDayX/go-metrics/internal/compress"
+	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/OneDayX/go-metrics/internal/httpclient"
 	"github.com/OneDayX/go-metrics/internal/models"
 	"github.com/OneDayX/go-metrics/internal/sign"
@@ -187,14 +189,15 @@ func (s *MetricService) Batch(ctx context.Context) []models.Metric {
 }
 
 // Send reports one batch to the server in a single gzipped request to
-// POST /updates/. A non-empty key signs the uncompressed body. Workers call it
-// side by side, as many at a time as the rate limit allows.
-func (s *MetricService) Send(ctx context.Context, host, key string, metrics []models.Metric) error {
+// POST /updates/. A non-empty key signs the uncompressed body, a non-nil
+// publicKey encrypts the compressed one. Workers call it side by side, as many
+// at a time as the rate limit allows.
+func (s *MetricService) Send(ctx context.Context, host, key string, publicKey *rsa.PublicKey, metrics []models.Metric) error {
 	if len(metrics) == 0 {
 		return nil
 	}
 
-	if err := s.send(ctx, host, key, metrics); err != nil {
+	if err := s.send(ctx, host, key, publicKey, metrics); err != nil {
 		s.unreport(metrics)
 		return err
 	}
@@ -202,15 +205,23 @@ func (s *MetricService) Send(ctx context.Context, host, key string, metrics []mo
 	return nil
 }
 
-func (s *MetricService) send(ctx context.Context, host, key string, metrics []models.Metric) error {
+func (s *MetricService) send(ctx context.Context, host, key string, publicKey *rsa.PublicKey, metrics []models.Metric) error {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return err
 	}
 
-	compressed, err := compress.Encode(body)
+	payload, err := compress.Encode(body)
 	if err != nil {
 		return err
+	}
+
+	// Encrypted bytes look random and do not compress, so compression goes first.
+	if publicKey != nil {
+		payload, err = crypt.Encrypt(payload, publicKey)
+		if err != nil {
+			return err
+		}
 	}
 
 	// The server checks the signature after decompressing, so it covers the JSON.
@@ -219,7 +230,7 @@ func (s *MetricService) send(ctx context.Context, host, key string, metrics []mo
 		signature = sign.Sum(body, key)
 	}
 
-	return s.post(ctx, host, compressed, signature)
+	return s.post(ctx, host, payload, signature)
 }
 
 // unreport takes the increments of a batch that never arrived back, so that

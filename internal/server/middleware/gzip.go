@@ -1,5 +1,5 @@
-// Package middleware holds the HTTP middleware of the server: gzip, body
-// signatures and request logging.
+// Package middleware holds the HTTP middleware of the server: decryption,
+// gzip, body signatures and request logging.
 package middleware
 
 import (

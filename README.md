@@ -60,6 +60,80 @@ make build BUILD_VERSION=v1.0.0
 go build -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=2026-10-18 -X main.buildCommit=abc123" ./cmd/server
 ```
 
+## Конфигурация
+
+Настройки задаются флагами, переменными окружения и файлом JSON. Имя файла задаётся флагом `-c`/`-config` или переменной `CONFIG`. Приоритет по возрастанию: значения по умолчанию, файл, флаги, переменные окружения. Если ключа нет в файле, остаётся значение по умолчанию.
+
+```
+./cmd/server/server -c server.json
+CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла перекрыт флагом
+```
+
+Интервалы во флагах и переменных указываются в секундах (`10`), а в файле — длительностью (`"10s"`, `"1m"`), дробная часть секунды отбрасывается.
+
+Сервер:
+
+| Флаг | Переменная | Ключ в файле | Значение |
+|---|---|---|---|
+| `-a` | `ADDRESS` | `address` | адрес сервера, `localhost:8080` |
+| `-i` | `STORE_INTERVAL` | `store_interval` | интервал сохранения в файл, `0` — сразу; 300 секунд |
+| `-f` | `FILE_STORAGE_PATH` | `store_file` | файл с метриками, `/tmp/metrics-db.json` |
+| `-r` | `RESTORE` | `restore` | загрузить метрики из файла при старте |
+| `-d` | `DATABASE_DSN` | `database_dsn` | строка подключения к PostgreSQL |
+| `-k` | `KEY` | `key` | ключ подписи |
+| `-l` | `LOG_FILE` | `log_file` | файл логов, по умолчанию stdout |
+| `-audit-file` | `AUDIT_FILE` | `audit_file` | файл аудита |
+| `-audit-url` | `AUDIT_URL` | `audit_url` | URL аудита |
+| `-pprof` | `PPROF_ADDRESS` | `pprof_address` | адрес pprof |
+| `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | приватный ключ для расшифровки |
+| `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
+
+```json
+{
+    "address": "localhost:8080",
+    "restore": true,
+    "store_interval": "1s",
+    "store_file": "/path/to/file.db",
+    "database_dsn": "",
+    "crypto_key": "/path/to/key.pem"
+}
+```
+
+Агент:
+
+| Флаг | Переменная | Ключ в файле | Значение |
+|---|---|---|---|
+| `-a` | `ADDRESS` | `address` | адрес сервера, `localhost:8080` |
+| `-p` | `POLL_INTERVAL` | `poll_interval` | интервал сбора метрик, 2 секунды |
+| `-r` | `REPORT_INTERVAL` | `report_interval` | интервал отправки, 10 секунд |
+| `-k` | `KEY` | `key` | ключ подписи |
+| `-l` | `RATE_LIMIT` | `rate_limit` | сколько запросов отправлять одновременно, 1 |
+| `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | публичный ключ сервера для шифрования |
+| `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
+
+```json
+{
+    "address": "localhost:8080",
+    "report_interval": "1s",
+    "poll_interval": "1s",
+    "crypto_key": "/path/to/key.pem"
+}
+```
+
+## Шифрование
+
+Агент может шифровать тела запросов публичным ключом сервера, а сервер расшифровывает их приватным ключом. Путь к ключу задаётся флагом `-crypto-key` или переменной `CRYPTO_KEY`: агенту — к публичному ключу, серверу — к приватному. Без ключа данные идут открыто, как раньше.
+
+Ключи RSA в формате PEM: публичный в PKIX (`BEGIN PUBLIC KEY`), приватный в PKCS #8 (`BEGIN PRIVATE KEY`). Пару создаёт `make keys` (нужен openssl):
+
+```
+make keys                                     # private.pem и public.pem в корне проекта
+./cmd/server/server -crypto-key private.pem
+./cmd/agent/agent -crypto-key public.pem
+```
+
+RSA за раз шифрует только несколько сотен байт, поэтому шифрование гибридное: агент сжимает батч и шифрует его случайным ключом AES-256-GCM, а сам этот ключ шифрует RSA-OAEP (SHA-256). Тело запроса — зашифрованный ключ, nonce и зашифрованные данные подряд. Сервер с ключом отвечает 400 на запрос, тело которого не удалось расшифровать; запросы без тела (`GET`, `POST /update/{type}/{name}/{value}`) проходят как обычно.
+
 ## Статический анализ
 
 В `cmd/staticlint` лежит multichecker, код проекта должен проходить его без замечаний:

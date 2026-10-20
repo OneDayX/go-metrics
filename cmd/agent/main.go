@@ -1,5 +1,6 @@
 // Agent collects runtime and system metrics and sends them to the server. The
-// flags and environment variables are described in internal/agent.Config.
+// flags, environment variables and config file keys are described in
+// internal/agent.Config.
 package main
 
 import (
@@ -40,8 +41,9 @@ func printBuildInfo() {
 func run() error {
 	cfg := agent.GetConfig()
 
-	// ctx is cancelled on SIGINT/SIGTERM, which stops every goroutine.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// ctx is cancelled on SIGINT/SIGTERM/SIGQUIT; the agent then sends what it
+	// has collected and exits.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	svc := service.NewMetricService(repository.NewMemStorage())

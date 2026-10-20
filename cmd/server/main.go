@@ -1,6 +1,6 @@
 // Server receives metrics from agents over HTTP and stores them in memory, in
-// a file or in PostgreSQL. The flags and environment variables are described
-// in internal/server.Config.
+// a file or in PostgreSQL. The flags, environment variables and config file
+// keys are described in internal/server.Config.
 package main
 
 import (
@@ -53,8 +53,8 @@ func printBuildInfo() {
 }
 
 func run() error {
-	// ctx is cancelled on SIGINT/SIGTERM so we can flush metrics before exiting.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// ctx is cancelled on SIGINT/SIGTERM/SIGQUIT so we can flush metrics before exiting.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	cfg := server.GetConfig()
@@ -114,6 +114,10 @@ func run() error {
 	h := handler.NewHandler(logger, auditor)
 
 	r := chi.NewRouter()
+	// Before gzip: the agent compresses the body first and then encrypts it.
+	if cfg.PrivateKey != nil {
+		r.Use(middleware.Decrypt(cfg.PrivateKey))
+	}
 	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.Logger(logger))
 	// After gzip, so the signatures cover the plain body; after the logger, so
@@ -158,7 +162,7 @@ func run() error {
 		}
 	}()
 
-	// Stop on SIGINT/SIGTERM, or when the listener fails; the metrics are saved
+	// Stop on a signal, or when the listener fails; the metrics are saved
 	// either way.
 	var runErr error
 	select {

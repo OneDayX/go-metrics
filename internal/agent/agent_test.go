@@ -51,3 +51,29 @@ func TestAgentRun(t *testing.T) {
 	assert.Positive(t, atomic.LoadInt64(&requests))
 	assert.LessOrEqual(t, atomic.LoadInt64(&maxInFlight), int64(cfg.RateLimit))
 }
+
+func TestAgentRunSendsOnShutdown(t *testing.T) {
+	var requests int64
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requests, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	// The report interval never comes, so only the shutdown can send a batch.
+	cfg := Config{
+		ServerAddr:     ts.Listener.Addr().String(),
+		RateLimit:      1,
+		PollInterval:   10 * time.Millisecond,
+		ReportInterval: time.Hour,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := New(cfg, service.NewMetricService(repository.NewMemStorage())).Run(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&requests))
+}
