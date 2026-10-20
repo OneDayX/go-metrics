@@ -1,6 +1,6 @@
 // Server receives metrics from agents over HTTP and stores them in memory, in
-// a file or in PostgreSQL. The flags and environment variables are described
-// in internal/server.Config.
+// a file or in PostgreSQL. The flags, environment variables and config file
+// keys are described in internal/server.Config.
 package main
 
 import (

@@ -3,9 +3,11 @@ package server
 
 import (
 	"crypto/rsa"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/OneDayX/go-metrics/internal/crypt"
@@ -14,35 +16,37 @@ import (
 
 const defaultStoreIntervalSeconds = 300
 
-// Config holds the server settings.
+// Config holds the server settings. The json tags are the keys of the config
+// file; the store interval is read from it in loadFile.
 type Config struct {
-	ServerAddr      string `env:"ADDRESS"`           // host:port to listen on
-	LogFile         string `env:"LOG_FILE"`          // logs go to stdout if empty
-	FileStoragePath string `env:"FILE_STORAGE_PATH"` // file to save metrics to
-	Restore         bool   `env:"RESTORE"`           // load metrics from the file on start
+	ServerAddr      string `env:"ADDRESS" json:"address"`              // host:port to listen on
+	LogFile         string `env:"LOG_FILE" json:"log_file"`            // logs go to stdout if empty
+	FileStoragePath string `env:"FILE_STORAGE_PATH" json:"store_file"` // file to save metrics to
+	Restore         bool   `env:"RESTORE" json:"restore"`              // load metrics from the file on start
 	// DatabaseDSN turns on the PostgreSQL storage; the file is not used then.
-	DatabaseDSN string `env:"DATABASE_DSN"`
+	DatabaseDSN string `env:"DATABASE_DSN" json:"database_dsn"`
 	// Key checks request signatures and signs responses; empty turns both off.
-	Key string `env:"KEY"`
+	Key string `env:"KEY" json:"key"`
 	// Audit is off if the value is empty.
-	AuditFile string `env:"AUDIT_FILE"`
-	AuditURL  string `env:"AUDIT_URL"`
+	AuditFile string `env:"AUDIT_FILE" json:"audit_file"`
+	AuditURL  string `env:"AUDIT_URL" json:"audit_url"`
 	// PprofAddr serves net/http/pprof; profiling is off if the value is empty.
-	PprofAddr string `env:"PPROF_ADDRESS"`
+	PprofAddr string `env:"PPROF_ADDRESS" json:"pprof_address"`
 	// CryptoKey is the path to the private key in PEM that decrypts request
 	// bodies; decryption is off if the value is empty.
-	CryptoKey string `env:"CRYPTO_KEY"`
+	CryptoKey string `env:"CRYPTO_KEY" json:"crypto_key"`
 
 	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
 	// which env.Parse cannot read into a duration. Zero means synchronous saving.
-	StoreInterval time.Duration `env:"-"`
+	StoreInterval time.Duration `env:"-" json:"-"`
 	// PrivateKey is loaded from CryptoKey in GetConfig; nil if CryptoKey is empty.
-	PrivateKey *rsa.PrivateKey `env:"-"`
+	PrivateKey *rsa.PrivateKey `env:"-" json:"-"`
 }
 
-// GetConfig reads the config from the command line flags and the environment
-// variables; a variable wins over its flag. It stops the program if a value is
-// invalid.
+// GetConfig reads the config from the JSON file, the command line flags and
+// the environment variables; a flag wins over the file and a variable wins
+// over its flag. The file is set with -c/-config or CONFIG. It stops the
+// program if a value is invalid.
 func GetConfig() Config {
 	cfg := Config{
 		ServerAddr:      "localhost:8080",
@@ -56,6 +60,8 @@ func GetConfig() Config {
 		Seconds int `env:"STORE_INTERVAL"`
 	}{Seconds: defaultStoreIntervalSeconds}
 
+	var configFile string
+
 	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
 	flag.StringVar(&cfg.LogFile, "l", cfg.LogFile, "path to log file (stdout if empty)")
 	flag.IntVar(&storeInterval.Seconds, "i", storeInterval.Seconds, "store interval in seconds (0 for sync)")
@@ -67,7 +73,22 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
 	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
+	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")
+	flag.StringVar(&configFile, "config", configFile, "path to the JSON config file (same as -c)")
 	flag.Parse()
+
+	if path := os.Getenv("CONFIG"); path != "" {
+		configFile = path
+	}
+
+	// The file name is known only after the flags are parsed, so the file is
+	// read over them and the flags are parsed once more to win over it.
+	if configFile != "" {
+		if err := loadFile(configFile, &cfg, &storeInterval.Seconds); err != nil {
+			log.Fatalf("failed to read the config file %s: %v", configFile, err)
+		}
+		flag.Parse()
+	}
 
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to parse environment variables: %v", err)
@@ -96,4 +117,34 @@ func GetConfig() Config {
 	}
 
 	return cfg
+}
+
+// loadFile reads the JSON config file into cfg; keys missing from the file
+// keep the values cfg already has. The file has the store interval as a
+// duration like "1s", it is saved to storeSeconds in whole seconds, the way
+// the flag carries it.
+func loadFile(path string, cfg *Config, storeSeconds *int) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return err
+	}
+
+	var file struct {
+		StoreInterval string `json:"store_interval"`
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		return err
+	}
+	if file.StoreInterval != "" {
+		interval, err := time.ParseDuration(file.StoreInterval)
+		if err != nil {
+			return fmt.Errorf("store_interval: %w", err)
+		}
+		*storeSeconds = int(interval / time.Second)
+	}
+
+	return nil
 }
