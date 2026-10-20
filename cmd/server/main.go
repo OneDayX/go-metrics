@@ -114,6 +114,10 @@ func run() error {
 	h := handler.NewHandler(logger, auditor)
 
 	r := chi.NewRouter()
+	// Before gzip: the agent compresses the body first and then encrypts it.
+	if cfg.PrivateKey != nil {
+		r.Use(middleware.Decrypt(cfg.PrivateKey))
+	}
 	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.Logger(logger))
 	// After gzip, so the signatures cover the plain body; after the logger, so

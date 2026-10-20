@@ -112,7 +112,7 @@ func (a *Agent) report(ctx context.Context, batches chan<- []models.Metric) {
 // time, until the reporter closes the channel.
 func (a *Agent) send(ctx context.Context, batches <-chan []models.Metric) {
 	for batch := range batches {
-		if err := a.svc.Send(ctx, a.cfg.ServerAddr, a.cfg.Key, batch); err != nil {
+		if err := a.svc.Send(ctx, a.cfg.ServerAddr, a.cfg.Key, a.cfg.PublicKey, batch); err != nil {
 			log.Printf("error sending metrics: %v", err)
 		}
 	}

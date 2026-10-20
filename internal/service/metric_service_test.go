@@ -1,12 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/OneDayX/go-metrics/internal/compress"
+	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/OneDayX/go-metrics/internal/models"
 	"github.com/OneDayX/go-metrics/internal/repository"
 	"github.com/OneDayX/go-metrics/internal/sign"
@@ -102,7 +107,7 @@ func TestMetricService_Send_Success(t *testing.T) {
 	err = svc.Update(context.Background(), models.Metric{ID: "testCounter", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(10))})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", nil, svc.Batch(context.Background()))
 	assert.NoError(t, err)
 }
 
@@ -160,7 +165,7 @@ func TestMetricService_Send_ReturnsIncrementsOfAFailedBatch(t *testing.T) {
 
 	require.NoError(t, svc.Update(context.Background(), counter))
 
-	err := svc.Send(context.Background(), "localhost:1", "", svc.Batch(context.Background()))
+	err := svc.Send(context.Background(), "localhost:1", "", nil, svc.Batch(context.Background()))
 	require.Error(t, err)
 
 	batch := svc.Batch(context.Background())
@@ -181,7 +186,31 @@ func TestMetricService_Send_WithKey(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "secret", svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "secret", nil, svc.Batch(context.Background()))
+	assert.NoError(t, err)
+}
+
+func TestMetricService_Send_WithPublicKey(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encrypted, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		compressed, err := crypt.Decrypt(encrypted, key)
+		require.NoError(t, err)
+		body, err := compress.Decode(bytes.NewReader(compressed))
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "testGauge")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	svc := NewMetricService(repository.NewMemStorage())
+	err = svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
+	require.NoError(t, err)
+
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", &key.PublicKey, svc.Batch(context.Background()))
 	assert.NoError(t, err)
 }
 
@@ -192,7 +221,7 @@ func TestMetricService_Send_ServerError(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), "localhost:1", "", svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), "localhost:1", "", nil, svc.Batch(context.Background()))
 	assert.Error(t, err)
 }
 
@@ -208,7 +237,7 @@ func TestMetricService_Send_NonOKStatus(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", nil, svc.Batch(context.Background()))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send metric")

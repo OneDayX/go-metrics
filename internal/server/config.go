@@ -2,11 +2,13 @@
 package server
 
 import (
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/caarlos0/env/v11"
 )
 
@@ -27,10 +29,15 @@ type Config struct {
 	AuditURL  string `env:"AUDIT_URL"`
 	// PprofAddr serves net/http/pprof; profiling is off if the value is empty.
 	PprofAddr string `env:"PPROF_ADDRESS"`
+	// CryptoKey is the path to the private key in PEM that decrypts request
+	// bodies; decryption is off if the value is empty.
+	CryptoKey string `env:"CRYPTO_KEY"`
 
 	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
 	// which env.Parse cannot read into a duration. Zero means synchronous saving.
 	StoreInterval time.Duration `env:"-"`
+	// PrivateKey is loaded from CryptoKey in GetConfig; nil if CryptoKey is empty.
+	PrivateKey *rsa.PrivateKey `env:"-"`
 }
 
 // GetConfig reads the config from the command line flags and the environment
@@ -59,6 +66,7 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "file to append audit events to (off if empty)")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
 	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {
@@ -78,6 +86,14 @@ func GetConfig() Config {
 		log.Fatalf("failed to parse store interval: %v", err)
 	}
 	cfg.StoreInterval = interval
+
+	if cfg.CryptoKey != "" {
+		key, err := crypt.LoadPrivateKey(cfg.CryptoKey)
+		if err != nil {
+			log.Fatalf("failed to load the private key from %s: %v", cfg.CryptoKey, err)
+		}
+		cfg.PrivateKey = key
+	}
 
 	return cfg
 }
