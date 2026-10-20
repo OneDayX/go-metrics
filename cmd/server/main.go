@@ -53,8 +53,8 @@ func printBuildInfo() {
 }
 
 func run() error {
-	// ctx is cancelled on SIGINT/SIGTERM so we can flush metrics before exiting.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// ctx is cancelled on SIGINT/SIGTERM/SIGQUIT so we can flush metrics before exiting.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	cfg := server.GetConfig()
@@ -162,7 +162,7 @@ func run() error {
 		}
 	}()
 
-	// Stop on SIGINT/SIGTERM, or when the listener fails; the metrics are saved
+	// Stop on a signal, or when the listener fails; the metrics are saved
 	// either way.
 	var runErr error
 	select {
