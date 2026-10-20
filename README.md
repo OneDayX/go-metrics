@@ -86,6 +86,7 @@ CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла п�
 | `-audit-url` | `AUDIT_URL` | `audit_url` | URL аудита |
 | `-pprof` | `PPROF_ADDRESS` | `pprof_address` | адрес pprof |
 | `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | приватный ключ для расшифровки |
+| `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
 
 ```json
 {
@@ -108,6 +109,7 @@ CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла п�
 | `-k` | `KEY` | `key` | ключ подписи |
 | `-l` | `RATE_LIMIT` | `rate_limit` | сколько запросов отправлять одновременно, 1 |
 | `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | публичный ключ сервера для шифрования |
+| `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
 
 ```json
 {

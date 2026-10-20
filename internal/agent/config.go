@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/OneDayX/go-metrics/internal/config"
 	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/caarlos0/env/v11"
 )
@@ -58,7 +59,14 @@ func GetConfig() Config {
 		Report: defaultReportIntervalSeconds,
 	}
 
-	var configFile string
+	// The file is read before the flags are registered: its values become the
+	// flag defaults, so a flag on the command line wins over the file.
+	configFile := config.FilePath(os.Args[1:])
+	if configFile != "" {
+		if err := loadFile(configFile, &cfg, &intervals.Poll, &intervals.Report); err != nil {
+			log.Fatalf("failed to read the config file %s: %v", configFile, err)
+		}
+	}
 
 	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
 	flag.Int64Var(&intervals.Poll, "p", intervals.Poll, "poll interval in seconds")
@@ -66,22 +74,11 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to sign requests with (unsigned if empty)")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "how many requests may be sent at once")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the server's public key in PEM (unencrypted if empty)")
+	// Already read by config.FilePath; registered last, so that flag.Parse
+	// accepts them and the usage lists them.
 	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")
 	flag.StringVar(&configFile, "config", configFile, "path to the JSON config file (same as -c)")
 	flag.Parse()
-
-	if path := os.Getenv("CONFIG"); path != "" {
-		configFile = path
-	}
-
-	// The file name is known only after the flags are parsed, so the file is
-	// read over them and the flags are parsed once more to win over it.
-	if configFile != "" {
-		if err := loadFile(configFile, &cfg, &intervals.Poll, &intervals.Report); err != nil {
-			log.Fatalf("failed to read the config file %s: %v", configFile, err)
-		}
-		flag.Parse()
-	}
 
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to parse environment variables: %v", err)

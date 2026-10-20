@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/OneDayX/go-metrics/internal/config"
 	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/caarlos0/env/v11"
 )
@@ -60,35 +61,31 @@ func GetConfig() Config {
 		Seconds int `env:"STORE_INTERVAL"`
 	}{Seconds: defaultStoreIntervalSeconds}
 
-	var configFile string
+	// The file is read before the flags are registered: its values become the
+	// flag defaults, so a flag on the command line wins over the file.
+	configFile := config.FilePath(os.Args[1:])
+	if configFile != "" {
+		if err := loadFile(configFile, &cfg, &storeInterval.Seconds); err != nil {
+			log.Fatalf("failed to read the config file %s: %v", configFile, err)
+		}
+	}
 
 	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
-	flag.StringVar(&cfg.LogFile, "l", cfg.LogFile, "path to log file (stdout if empty)")
 	flag.IntVar(&storeInterval.Seconds, "i", storeInterval.Seconds, "store interval in seconds (0 for sync)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "path to file storage")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore metrics from file on startup")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database connection string (postgres DSN)")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to check and sign bodies with (off if empty)")
+	flag.StringVar(&cfg.LogFile, "l", cfg.LogFile, "path to log file (stdout if empty)")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "file to append audit events to (off if empty)")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
 	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
+	// Already read by config.FilePath; registered last, so that flag.Parse
+	// accepts them and the usage lists them.
 	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")
 	flag.StringVar(&configFile, "config", configFile, "path to the JSON config file (same as -c)")
 	flag.Parse()
-
-	if path := os.Getenv("CONFIG"); path != "" {
-		configFile = path
-	}
-
-	// The file name is known only after the flags are parsed, so the file is
-	// read over them and the flags are parsed once more to win over it.
-	if configFile != "" {
-		if err := loadFile(configFile, &cfg, &storeInterval.Seconds); err != nil {
-			log.Fatalf("failed to read the config file %s: %v", configFile, err)
-		}
-		flag.Parse()
-	}
 
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to parse environment variables: %v", err)
