@@ -27,7 +27,9 @@ func migrateSchema(dsn string) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	// Close only releases the migration's own connection; the result of Up
+	// is what matters.
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return err

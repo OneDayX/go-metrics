@@ -251,7 +251,7 @@ func (s *MetricService) post(ctx context.Context, host string, body []byte, sign
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: server answered %d", ErrSendFailed, resp.StatusCode)

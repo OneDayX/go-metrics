@@ -73,7 +73,8 @@ func (ds *DBStorage) updateBatchOnce(ctx context.Context, metrics []models.Metri
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	// After Commit, Rollback does nothing and only returns ErrTxClosed.
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	for _, metric := range metrics {
 		_, err := tx.Exec(ctx, upsertQuery, metric.ID, metric.MType, metric.Delta, metric.Value)

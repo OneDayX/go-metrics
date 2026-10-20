@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os/signal"
 	"syscall"
@@ -13,10 +14,27 @@ import (
 	"github.com/OneDayX/go-metrics/internal/service"
 )
 
+// Build info, set at build time with
+// -ldflags "-X main.buildVersion=... -X main.buildDate=... -X main.buildCommit=...".
+var (
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
+)
+
 func main() {
+	printBuildInfo()
+
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// printBuildInfo prints the build info to stdout.
+func printBuildInfo() {
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 }
 
 func run() error {

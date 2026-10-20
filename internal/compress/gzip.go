@@ -26,6 +26,13 @@ func Decode(r io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer zr.Close()
-	return io.ReadAll(zr)
+
+	data, err := io.ReadAll(zr)
+	if err != nil {
+		return nil, err
+	}
+	if err := zr.Close(); err != nil {
+		return nil, err
+	}
+	return data, nil
 }

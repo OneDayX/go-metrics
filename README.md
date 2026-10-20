@@ -43,6 +43,59 @@ git fetch template && git checkout template/v2 .github
 - **Hexagonal Architecture**
 - **Layered Architecture**
 
+## Сборка и версия
+
+При старте сервер и агент печатают в stdout версию, дату сборки и коммит. Значения задаются при сборке через `-ldflags`, без них выводится `N/A`:
+
+```
+Build version: 6830bc6
+Build date: 2026-10-18T12:05:37Z
+Build commit: 6830bc6
+```
+
+`make build` подставляет их сам: версия из `git describe --tags --always` (без тегов это хеш коммита), дата в UTC и короткий хеш коммита. Любое значение можно переопределить:
+
+```
+make build BUILD_VERSION=v1.0.0
+go build -ldflags "-X main.buildVersion=v1.0.0 -X main.buildDate=2026-10-18 -X main.buildCommit=abc123" ./cmd/server
+```
+
+## Статический анализ
+
+В `cmd/staticlint` лежит multichecker, код проекта должен проходить его без замечаний:
+
+```
+make lint                      # собрать cmd/staticlint/staticlint и проверить ./...
+go run ./cmd/staticlint ./...  # то же без make
+```
+
+В него входят стандартные анализаторы `golang.org/x/tools/go/analysis/passes`, все проверки класса SA из staticcheck, несколько проверок классов S, ST и QF, публичные `errcheck` и `bodyclose` и собственный `osexit`, который запрещает прямой вызов `os.Exit` в функции `main` пакета `main`. Запуск, флаги и назначение каждого анализатора описаны в документации пакета: `go doc ./cmd/staticlint`.
+
+## Генерация Reset
+
+`cmd/reset` ищет во всех пакетах проекта структуры с комментарием `// generate:reset` и пишет для них метод `Reset()` в файл `reset.gen.go` того же пакета:
+
+```
+make generate        # то же, что go run ./cmd/reset
+```
+
+`Reset()` обнуляет примитивы, обрезает слайсы до `[:0]`, очищает мапы, вызывает `Reset()` у вложенных полей, у которых он есть, и сбрасывает значения не nil указателей по тем же правилам. Пример входа и результата: `cmd/reset/testdata`.
+
+Такие структуры можно переиспользовать через `pkg/pool`: это типизированная обёртка над `sync.Pool`, которая вызывает `Reset()` при возврате объекта в пул:
+
+```go
+p := pool.New(func() *Batch { return &Batch{} })
+b := p.Get()
+// ... работа с b
+p.Put(b) // b сбрасывается и возвращается в пул
+```
+
+## Покрытие тестами
+
+```
+make cover
+```
+
 ## Бенчмарки
 
 Бенчмарки лежат рядом с кодом в файлах `*_bench_test.go`: хранилище в памяти (`Update`, `UpdateBatch`, `FetchAll`), хендлеры (`/updates/`, `/value/`, `/`), gzip middleware, подпись (`sign.Sum`), сжатие на агенте (`compress.Encode`) и сбор метрик агентом (`Collect`).

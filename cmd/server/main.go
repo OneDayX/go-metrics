@@ -29,10 +29,27 @@ import (
 // shutdownTimeout is how long the requests in progress get to finish.
 const shutdownTimeout = 10 * time.Second
 
+// Build info, set at build time with
+// -ldflags "-X main.buildVersion=... -X main.buildDate=... -X main.buildCommit=...".
+var (
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
+)
+
 func main() {
+	printBuildInfo()
+
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// printBuildInfo prints the build info to stdout.
+func printBuildInfo() {
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 }
 
 func run() error {
@@ -46,7 +63,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer logger.Sync()
+	// Sync often fails on stdout, and there is nowhere to report it anyway.
+	defer func() { _ = logger.Sync() }()
 
 	// Storage is picked in order: database, then file, then memory only.
 	// An interface, not *database.DB: a nil pointer inside it would not be nil.
