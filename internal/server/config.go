@@ -40,6 +40,9 @@ type Config struct {
 	// TrustedSubnet is a CIDR like "192.168.1.0/24": metrics are accepted only
 	// from agents whose X-Real-IP is in it. Any agent is accepted if it is empty.
 	TrustedSubnet string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
+	// GRPCAddr is the host:port of the gRPC server, which runs next to the
+	// HTTP one; gRPC is off if the value is empty.
+	GRPCAddr string `env:"GRPC_ADDRESS" json:"grpc_address"`
 
 	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
 	// which env.Parse cannot read into a duration. Zero means synchronous saving.
@@ -88,6 +91,7 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
 	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "trusted subnet of the agents in CIDR (any agent if empty)")
+	flag.StringVar(&cfg.GRPCAddr, "grpc", cfg.GRPCAddr, "gRPC server address (host:port, off if empty)")
 	// Already read by config.FilePath; registered last, so that flag.Parse
 	// accepts them and the usage lists them.
 	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")

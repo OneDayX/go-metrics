@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/OneDayX/go-metrics/internal/models"
+	pb "github.com/OneDayX/go-metrics/internal/proto"
 	"github.com/OneDayX/go-metrics/internal/service"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // shutdownTimeout is how long the last batches get to reach the server after
@@ -17,7 +20,8 @@ const shutdownTimeout = 10 * time.Second
 
 // Agent runs the polling and the reporting apart from each other: two
 // goroutines fill the storage, Run builds batches out of it, and a pool of
-// workers sends them. The pool size is the limit of requests in flight.
+// workers sends them over HTTP or gRPC. The pool size is the limit of requests
+// in flight.
 type Agent struct {
 	cfg Config
 	svc *service.MetricService
@@ -32,11 +36,24 @@ func New(cfg Config, svc *service.MetricService) *Agent {
 // Run collects and sends metrics until ctx is cancelled. Then it sends what
 // was collected since the last report and waits for the requests in flight,
 // giving them shutdownTimeout. It returns an error only if the very first poll
-// fails.
+// fails or the gRPC client cannot be created.
 func (a *Agent) Run(ctx context.Context) error {
 	// Poll once right away, so the first report has something to send.
 	if err := a.svc.Collect(ctx); err != nil {
 		return err
+	}
+
+	// With a gRPC address the workers share one connection; it is closed
+	// after they are done. A nil client means HTTP.
+	var client pb.MetricsClient
+	if a.cfg.GRPCAddr != "" {
+		conn, err := grpc.NewClient(a.cfg.GRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = conn.Close() }()
+
+		client = pb.NewMetricsClient(conn)
 	}
 
 	var pollers sync.WaitGroup
@@ -68,7 +85,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		senders.Add(1)
 		go func() {
 			defer senders.Done()
-			a.send(sendCtx, batches)
+			a.send(sendCtx, client, batches)
 		}()
 	}
 
@@ -126,10 +143,17 @@ func (a *Agent) handOff(ctx context.Context, batches chan<- []models.Metric) {
 }
 
 // send is one worker of the pool: it sends the batches it is given, one at a
-// time, until Run closes the channel.
-func (a *Agent) send(ctx context.Context, batches <-chan []models.Metric) {
+// time, until Run closes the channel. They go over gRPC if client is not nil.
+func (a *Agent) send(ctx context.Context, client pb.MetricsClient, batches <-chan []models.Metric) {
 	for batch := range batches {
-		if err := a.svc.Send(ctx, a.cfg.ServerAddr, a.cfg.RealIP, a.cfg.Key, a.cfg.PublicKey, batch); err != nil {
+		var err error
+		if client != nil {
+			err = a.svc.SendGRPC(ctx, client, a.cfg.RealIP, batch)
+		} else {
+			err = a.svc.Send(ctx, a.cfg.ServerAddr, a.cfg.RealIP, a.cfg.Key, a.cfg.PublicKey, batch)
+		}
+
+		if err != nil {
 			log.Printf("error sending metrics: %v", err)
 		}
 	}

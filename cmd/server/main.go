@@ -1,6 +1,6 @@
-// Server receives metrics from agents over HTTP and stores them in memory, in
-// a file or in PostgreSQL. The flags, environment variables and config file
-// keys are described in internal/server.Config.
+// Server receives metrics from agents over HTTP and gRPC and stores them in
+// memory, in a file or in PostgreSQL. The flags, environment variables and
+// config file keys are described in internal/server.Config.
 package main
 
 import (
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof" // registers the /debug/pprof handlers in http.DefaultServeMux
 	"os/signal"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/OneDayX/go-metrics/internal/audit"
 	"github.com/OneDayX/go-metrics/internal/database"
+	"github.com/OneDayX/go-metrics/internal/grpcserver"
 	"github.com/OneDayX/go-metrics/internal/handler"
 	"github.com/OneDayX/go-metrics/internal/repository"
 	"github.com/OneDayX/go-metrics/internal/server"
@@ -24,6 +26,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // shutdownTimeout is how long the requests in progress get to finish.
@@ -155,9 +158,9 @@ func run() error {
 		}()
 	}
 
-	// Buffered, so the goroutine can report the error and exit even when
-	// nobody is waiting for it anymore.
-	serveErr := make(chan error, 1)
+	// Buffered with a slot per server, so the goroutines can report the error
+	// and exit even when nobody is waiting for it anymore.
+	serveErr := make(chan error, 2)
 
 	logger.Info("starting server", zap.String("addr", cfg.ServerAddr))
 	go func() {
@@ -166,6 +169,19 @@ func run() error {
 			serveErr <- err
 		}
 	}()
+
+	// gRPC takes metrics next to HTTP, with the same storage and audit.
+	var grpcSrv *grpc.Server
+	if cfg.GRPCAddr != "" {
+		grpcSrv = grpcserver.New(svc, auditor, cfg.TrustedNet)
+
+		logger.Info("starting gRPC server", zap.String("addr", cfg.GRPCAddr))
+		go func() {
+			if err := serveGRPC(grpcSrv, cfg.GRPCAddr); err != nil {
+				serveErr <- fmt.Errorf("gRPC: %w", err)
+			}
+		}()
+	}
 
 	// Stop on a signal, or when the listener fails; the metrics are saved
 	// either way.
@@ -185,7 +201,11 @@ func run() error {
 		logger.Error("failed to shut down the server", zap.Error(err))
 	}
 
-	// The server is stopped, so we can send the rest of the audit events and
+	if grpcSrv != nil {
+		stopGRPC(shutdownCtx, grpcSrv)
+	}
+
+	// The servers are stopped, so we can send the rest of the audit events and
 	// close the audit file.
 	if err := auditor.Close(shutdownCtx); err != nil {
 		logger.Error("failed to deliver the remaining audit events", zap.Error(err))
@@ -197,6 +217,33 @@ func run() error {
 
 	persister.Stop()
 	return errors.Join(runErr, persister.SaveMetrics())
+}
+
+// serveGRPC listens on addr and serves gRPC calls until the server is stopped.
+// Serve returns nil after a stop, so only a real failure is an error.
+func serveGRPC(srv *grpc.Server, addr string) error {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	return srv.Serve(listener)
+}
+
+// stopGRPC lets the calls in progress finish, but cuts them off when ctx is
+// done: GracefulStop alone would wait for them forever.
+func stopGRPC(ctx context.Context, srv *grpc.Server) {
+	stopped := make(chan struct{})
+	go func() {
+		srv.GracefulStop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-ctx.Done():
+		srv.Stop()
+	}
 }
 
 // newAuditor creates the audit publisher. If both audit file and audit URL

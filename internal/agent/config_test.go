@@ -35,7 +35,8 @@ func TestGetConfig(t *testing.T) {
 		"poll_interval": "5s",
 		"report_interval": "20s",
 		"rate_limit": 3,
-		"key": "file-key"
+		"key": "file-key",
+		"grpc_address": "localhost:3200"
 	}`)
 
 	// The flag wins over the file, the variable wins over both.
@@ -49,6 +50,7 @@ func TestGetConfig(t *testing.T) {
 	assert.Equal(t, 30*time.Second, cfg.ReportInterval)
 	assert.Equal(t, 3, cfg.RateLimit)
 	assert.Equal(t, "env-key", cfg.Key)
+	assert.Equal(t, "localhost:3200", cfg.GRPCAddr)
 	assert.True(t, net.ParseIP(cfg.RealIP).IsLoopback(), "the server is on localhost")
 }
 

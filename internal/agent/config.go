@@ -33,6 +33,9 @@ type Config struct {
 	// CryptoKey is the path to the server's public key in PEM; request bodies
 	// are sent unencrypted if it is empty.
 	CryptoKey string `env:"CRYPTO_KEY" json:"crypto_key"`
+	// GRPCAddr is the host:port of the server's gRPC; if it is set, the
+	// batches go over gRPC instead of HTTP.
+	GRPCAddr string `env:"GRPC_ADDRESS" json:"grpc_address"`
 
 	// Filled in GetConfig: the flags and the environment carry bare seconds,
 	// which env.Parse cannot read into a duration.
@@ -40,8 +43,8 @@ type Config struct {
 	ReportInterval time.Duration `env:"-" json:"-"`
 	// PublicKey is loaded from CryptoKey in GetConfig; nil if CryptoKey is empty.
 	PublicKey *rsa.PublicKey `env:"-" json:"-"`
-	// RealIP is the address of the agent's host, sent in X-Real-IP; found in
-	// GetConfig.
+	// RealIP is the address of the agent's host, sent in X-Real-IP or in the
+	// x-real-ip metadata; found in GetConfig.
 	RealIP string `env:"-" json:"-"`
 }
 
@@ -78,6 +81,7 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to sign requests with (unsigned if empty)")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "how many requests may be sent at once")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the server's public key in PEM (unencrypted if empty)")
+	flag.StringVar(&cfg.GRPCAddr, "grpc", cfg.GRPCAddr, "gRPC server address (host:port, HTTP if empty)")
 	// Already read by config.FilePath; registered last, so that flag.Parse
 	// accepts them and the usage lists them.
 	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")
@@ -106,7 +110,13 @@ func GetConfig() Config {
 		cfg.PublicKey = key
 	}
 
-	ip, err := hostIP(cfg.ServerAddr)
+	// The route is checked to the server the batches go to.
+	serverAddr := cfg.ServerAddr
+	if cfg.GRPCAddr != "" {
+		serverAddr = cfg.GRPCAddr
+	}
+
+	ip, err := hostIP(serverAddr)
 	if err != nil {
 		log.Fatalf("failed to find the host address: %v", err)
 	}

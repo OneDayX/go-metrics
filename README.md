@@ -87,6 +87,7 @@ CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла п�
 | `-pprof` | `PPROF_ADDRESS` | `pprof_address` | адрес pprof |
 | `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | приватный ключ для расшифровки |
 | `-t` | `TRUSTED_SUBNET` | `trusted_subnet` | доверенная подсеть агентов в CIDR |
+| `-grpc` | `GRPC_ADDRESS` | `grpc_address` | адрес gRPC-сервера, по умолчанию gRPC выключен |
 | `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
 
 ```json
@@ -111,6 +112,7 @@ CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла п�
 | `-k` | `KEY` | `key` | ключ подписи |
 | `-l` | `RATE_LIMIT` | `rate_limit` | сколько запросов отправлять одновременно, 1 |
 | `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | публичный ключ сервера для шифрования |
+| `-grpc` | `GRPC_ADDRESS` | `grpc_address` | адрес gRPC-сервера, если задан — метрики идут по gRPC вместо HTTP |
 | `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
 
 ```json
@@ -142,6 +144,27 @@ RSA за раз шифрует только несколько сотен бай
 
 ```
 ./cmd/server/server -t 127.0.0.0/8
+```
+
+## gRPC
+
+Кроме HTTP, сервер может принимать метрики по gRPC. Контракт описан в `api/metrics.proto`: сервис `Metrics` с одним методом `UpdateMetrics`, который принимает батч метрик (`UpdateMetricsRequest`). Сгенерированный код лежит в `internal/proto`.
+
+На сервере gRPC включается адресом (`-grpc`, `GRPC_ADDRESS` или `grpc_address`) и работает рядом с HTTP, с тем же хранилищем и аудитом. Агент с этим адресом отправляет батчи по gRPC, а `-a` больше не использует:
+
+```
+./cmd/server/server -grpc localhost:3200
+./cmd/agent/agent -grpc localhost:3200
+```
+
+Свой адрес агент передаёт в метаданных запроса с ключом `x-real-ip`. Если серверу задана доверенная подсеть, интерсептор пропускает только вызовы с адресом из неё, остальные получают ошибку `PermissionDenied`. Ключ подписи (`-k`) и шифрование (`-crypto-key`) действуют только для HTTP, gRPC идёт без TLS.
+
+Код в `internal/proto` пересобирается командой `make proto`. Для неё нужны `protoc` ([релизы](https://github.com/protocolbuffers/protobuf/releases)) и плагины:
+
+```
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+make proto
 ```
 
 ## Статический анализ
