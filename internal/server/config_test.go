@@ -34,7 +34,8 @@ func TestGetConfig(t *testing.T) {
 		"restore": true,
 		"store_interval": "1m",
 		"store_file": "/tmp/from-file.json",
-		"database_dsn": "postgres://file"
+		"database_dsn": "postgres://file",
+		"trusted_subnet": "192.168.1.0/24"
 	}`)
 
 	// The flag wins over the file, the variable wins over both.
@@ -47,6 +48,7 @@ func TestGetConfig(t *testing.T) {
 	assert.Equal(t, "/tmp/from-file.json", cfg.FileStoragePath)
 	assert.Equal(t, "postgres://flag", cfg.DatabaseDSN)
 	assert.False(t, cfg.Restore)
+	assert.Equal(t, "192.168.1.0/24", cfg.TrustedNet.String())
 }
 
 func TestLoadFileError(t *testing.T) {

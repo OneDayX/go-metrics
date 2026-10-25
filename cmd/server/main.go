@@ -128,15 +128,20 @@ func run() error {
 
 	// Metrictest sending weird requests with trailing slashes, so we add StripSlashes middleware
 	r.Use(chimw.StripSlashes)
-	r.Post("/update/{type}/{name}/{value}", h.Update(svc)) // POST /update/gauge/Alloc/1
-	r.Get("/", h.List(svc))                                // GET /
-	r.Get("/value/{type}/{name}", h.Get(svc))              // GET /value/gauge/Alloc
-	r.Get("/ping", h.Ping(db))                             // GET /ping
+	r.Get("/", h.List(svc))                   // GET /
+	r.Get("/value/{type}/{name}", h.Get(svc)) // GET /value/gauge/Alloc
+	r.Get("/ping", h.Ping(db))                // GET /ping
+	r.Post("/value", h.ValueJSON(svc))        // POST /value and /value/
 
-	//JSON Routes
-	r.Post("/update", h.UpdateJSON(svc))   // POST /update and /update/
-	r.Post("/updates", h.UpdatesJSON(svc)) // POST /updates and /updates/
-	r.Post("/value", h.ValueJSON(svc))     // POST /value and /value/
+	// The routes that take metrics accept them only from the trusted subnet.
+	r.Group(func(r chi.Router) {
+		if cfg.TrustedNet != nil {
+			r.Use(middleware.TrustedSubnet(cfg.TrustedNet))
+		}
+		r.Post("/update/{type}/{name}/{value}", h.Update(svc)) // POST /update/gauge/Alloc/1
+		r.Post("/update", h.UpdateJSON(svc))                   // POST /update and /update/
+		r.Post("/updates", h.UpdatesJSON(svc))                 // POST /updates and /updates/
+	})
 
 	srv := &http.Server{Addr: cfg.ServerAddr, Handler: r}
 

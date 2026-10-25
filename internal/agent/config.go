@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"time"
 
@@ -39,6 +40,9 @@ type Config struct {
 	ReportInterval time.Duration `env:"-" json:"-"`
 	// PublicKey is loaded from CryptoKey in GetConfig; nil if CryptoKey is empty.
 	PublicKey *rsa.PublicKey `env:"-" json:"-"`
+	// RealIP is the address of the agent's host, sent in X-Real-IP; found in
+	// GetConfig.
+	RealIP string `env:"-" json:"-"`
 }
 
 // GetConfig reads the config from the JSON file, the command line flags and
@@ -102,7 +106,25 @@ func GetConfig() Config {
 		cfg.PublicKey = key
 	}
 
+	ip, err := hostIP(cfg.ServerAddr)
+	if err != nil {
+		log.Fatalf("failed to find the host address: %v", err)
+	}
+	cfg.RealIP = ip
+
 	return cfg
+}
+
+// hostIP returns the address of the interface the agent reaches the server
+// through. Dialing UDP sends nothing, it only picks the route.
+func hostIP(serverAddr string) (string, error) {
+	conn, err := net.Dial("udp", serverAddr)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = conn.Close() }()
+
+	return conn.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }
 
 // loadFile reads the JSON config file into cfg; keys missing from the file

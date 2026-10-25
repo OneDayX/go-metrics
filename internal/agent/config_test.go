@@ -2,6 +2,7 @@ package agent
 
 import (
 	"flag"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,6 +49,7 @@ func TestGetConfig(t *testing.T) {
 	assert.Equal(t, 30*time.Second, cfg.ReportInterval)
 	assert.Equal(t, 3, cfg.RateLimit)
 	assert.Equal(t, "env-key", cfg.Key)
+	assert.True(t, net.ParseIP(cfg.RealIP).IsLoopback(), "the server is on localhost")
 }
 
 func TestLoadFileError(t *testing.T) {

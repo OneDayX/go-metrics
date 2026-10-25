@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"time"
 
@@ -36,12 +37,17 @@ type Config struct {
 	// CryptoKey is the path to the private key in PEM that decrypts request
 	// bodies; decryption is off if the value is empty.
 	CryptoKey string `env:"CRYPTO_KEY" json:"crypto_key"`
+	// TrustedSubnet is a CIDR like "192.168.1.0/24": metrics are accepted only
+	// from agents whose X-Real-IP is in it. Any agent is accepted if it is empty.
+	TrustedSubnet string `env:"TRUSTED_SUBNET" json:"trusted_subnet"`
 
 	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
 	// which env.Parse cannot read into a duration. Zero means synchronous saving.
 	StoreInterval time.Duration `env:"-" json:"-"`
 	// PrivateKey is loaded from CryptoKey in GetConfig; nil if CryptoKey is empty.
 	PrivateKey *rsa.PrivateKey `env:"-" json:"-"`
+	// TrustedNet is parsed from TrustedSubnet in GetConfig; nil if it is empty.
+	TrustedNet *net.IPNet `env:"-" json:"-"`
 }
 
 // GetConfig reads the config from the JSON file, the command line flags and
@@ -81,6 +87,7 @@ func GetConfig() Config {
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
 	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "trusted subnet of the agents in CIDR (any agent if empty)")
 	// Already read by config.FilePath; registered last, so that flag.Parse
 	// accepts them and the usage lists them.
 	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")
@@ -111,6 +118,14 @@ func GetConfig() Config {
 			log.Fatalf("failed to load the private key from %s: %v", cfg.CryptoKey, err)
 		}
 		cfg.PrivateKey = key
+	}
+
+	if cfg.TrustedSubnet != "" {
+		_, subnet, err := net.ParseCIDR(cfg.TrustedSubnet)
+		if err != nil {
+			log.Fatalf("failed to parse the trusted subnet %s: %v", cfg.TrustedSubnet, err)
+		}
+		cfg.TrustedNet = subnet
 	}
 
 	return cfg

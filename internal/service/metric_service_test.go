@@ -107,7 +107,7 @@ func TestMetricService_Send_Success(t *testing.T) {
 	err = svc.Update(context.Background(), models.Metric{ID: "testCounter", MType: models.MetricTypeCounter, Delta: models.Ptr(int64(10))})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", nil, svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", "", nil, svc.Batch(context.Background()))
 	assert.NoError(t, err)
 }
 
@@ -165,7 +165,7 @@ func TestMetricService_Send_ReturnsIncrementsOfAFailedBatch(t *testing.T) {
 
 	require.NoError(t, svc.Update(context.Background(), counter))
 
-	err := svc.Send(context.Background(), "localhost:1", "", nil, svc.Batch(context.Background()))
+	err := svc.Send(context.Background(), "localhost:1", "", "", nil, svc.Batch(context.Background()))
 	require.Error(t, err)
 
 	batch := svc.Batch(context.Background())
@@ -186,7 +186,22 @@ func TestMetricService_Send_WithKey(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "secret", nil, svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", "secret", nil, svc.Batch(context.Background()))
+	assert.NoError(t, err)
+}
+
+func TestMetricService_Send_WithRealIP(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "192.168.1.10", r.Header.Get("X-Real-IP"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	svc := NewMetricService(repository.NewMemStorage())
+	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
+	require.NoError(t, err)
+
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "192.168.1.10", "", nil, svc.Batch(context.Background()))
 	assert.NoError(t, err)
 }
 
@@ -210,7 +225,7 @@ func TestMetricService_Send_WithPublicKey(t *testing.T) {
 	err = svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(42.5)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", &key.PublicKey, svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", "", &key.PublicKey, svc.Batch(context.Background()))
 	assert.NoError(t, err)
 }
 
@@ -221,7 +236,7 @@ func TestMetricService_Send_ServerError(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), "localhost:1", "", nil, svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), "localhost:1", "", "", nil, svc.Batch(context.Background()))
 	assert.Error(t, err)
 }
 
@@ -237,7 +252,7 @@ func TestMetricService_Send_NonOKStatus(t *testing.T) {
 	err := svc.Update(context.Background(), models.Metric{ID: "testGauge", MType: models.MetricTypeGauge, Value: models.Ptr(1.0)})
 	require.NoError(t, err)
 
-	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", nil, svc.Batch(context.Background()))
+	err = svc.Send(context.Background(), ts.Listener.Addr().String(), "", "", nil, svc.Batch(context.Background()))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send metric")
