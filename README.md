@@ -86,6 +86,7 @@ CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла п�
 | `-audit-url` | `AUDIT_URL` | `audit_url` | URL аудита |
 | `-pprof` | `PPROF_ADDRESS` | `pprof_address` | адрес pprof |
 | `-crypto-key` | `CRYPTO_KEY` | `crypto_key` | приватный ключ для расшифровки |
+| `-t` | `TRUSTED_SUBNET` | `trusted_subnet` | доверенная подсеть агентов в CIDR |
 | `-c`, `-config` | `CONFIG` | — | файл конфигурации JSON |
 
 ```json
@@ -95,7 +96,8 @@ CONFIG=agent.json ./cmd/agent/agent -r 5   # report_interval из файла п�
     "store_interval": "1s",
     "store_file": "/path/to/file.db",
     "database_dsn": "",
-    "crypto_key": "/path/to/key.pem"
+    "crypto_key": "/path/to/key.pem",
+    "trusted_subnet": "192.168.1.0/24"
 }
 ```
 
@@ -133,6 +135,14 @@ make keys                                     # private.pem и public.pem в к�
 ```
 
 RSA за раз шифрует только несколько сотен байт, поэтому шифрование гибридное: агент сжимает батч и шифрует его случайным ключом AES-256-GCM, а сам этот ключ шифрует RSA-OAEP (SHA-256). Тело запроса — зашифрованный ключ, nonce и зашифрованные данные подряд. Сервер с ключом отвечает 400 на запрос, тело которого не удалось расшифровать; запросы без тела (`GET`, `POST /update/{type}/{name}/{value}`) проходят как обычно.
+
+## Доверенная подсеть
+
+Агент передаёт в заголовке `X-Real-IP` адрес своего хоста — того интерфейса, через который он ходит к серверу (для сервера на `localhost` это `127.0.0.1`). Если серверу задана подсеть (`-t`, `TRUSTED_SUBNET` или `trusted_subnet`), запросы с метриками (`POST /update/...`, `/update`, `/updates`) принимаются только с адресом из неё, остальные получают 403. Чтение метрик и `/ping` не проверяются. Без подсети сервер принимает метрики от всех.
+
+```
+./cmd/server/server -t 127.0.0.0/8
+```
 
 ## Статический анализ
 
