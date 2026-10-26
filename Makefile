@@ -27,6 +27,10 @@ PG_IMAGE     ?= postgres:16-alpine
 PG_PORT      ?= 5433
 DATABASE_DSN ?= postgres://postgres:postgres@localhost:$(PG_PORT)/praktikum?sslmode=disable
 
+# RSA key pair for -crypto-key, see `make keys`.
+PRIVATE_KEY ?= private.pem
+PUBLIC_KEY  ?= public.pem
+
 # Memory profiling, see `make profile`.
 PPROF_ADDRESS ?= localhost:6060
 PROFILE       ?= base
@@ -34,7 +38,7 @@ LOAD_DATA     := profiles/testdata
 LOAD_REQUESTS ?= 20000
 
 .DEFAULT_GOAL := help
-.PHONY: help build build-server build-agent build-lint generate test test-db cover bench vet lint fmt iter profile db-up db-reset db-down clean
+.PHONY: help build build-server build-agent build-lint generate proto keys test test-db cover bench vet lint fmt iter profile db-up db-reset db-down clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -52,6 +56,16 @@ build-lint: ## Build the staticlint multichecker
 
 generate: ## Generate Reset methods for structs marked // generate:reset
 	$(GO) run ./cmd/reset
+
+proto: ## Generate the gRPC code in internal/proto from api/metrics.proto
+	protoc --proto_path=api \
+		--go_out=. --go_opt=module=github.com/OneDayX/go-metrics \
+		--go-grpc_out=. --go-grpc_opt=module=github.com/OneDayX/go-metrics \
+		api/metrics.proto
+
+keys: ## Generate an RSA key pair for -crypto-key (private.pem, public.pem)
+	openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out $(PRIVATE_KEY)
+	openssl pkey -in $(PRIVATE_KEY) -pubout -out $(PUBLIC_KEY)
 
 test: ## Run unit tests under the race detector (database tests are skipped)
 	$(GO) test -race ./...

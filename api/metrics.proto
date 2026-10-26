@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package metrics;
+
+option go_package = "github.com/OneDayX/go-metrics/internal/proto";
+
+// Metric is one gauge or counter.
+message Metric {
+  string id = 1; // metric name
+
+  // MType is the metric type.
+  enum MType {
+    GAUGE = 0;
+    COUNTER = 1;
+  }
+
+  MType type = 2; // metric type
+  // delta is the value of a counter.
+  int64 delta = 3;
+  // value is the value of a gauge.
+  double value = 4;
+}
+
+// UpdateMetricsRequest holds the metrics to update.
+message UpdateMetricsRequest {
+  repeated Metric metrics = 1;
+}
+
+// UpdateMetricsResponse is empty: it only confirms the update.
+message UpdateMetricsResponse {}
+
+// Metrics is the service that takes metrics from the agents.
+service Metrics {
+  // UpdateMetrics saves the metrics on the server, one metric or a batch.
+  rpc UpdateMetrics(UpdateMetricsRequest) returns (UpdateMetricsResponse);
+}

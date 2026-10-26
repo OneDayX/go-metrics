@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +15,10 @@ import (
 	"sync"
 
 	"github.com/OneDayX/go-metrics/internal/compress"
+	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/OneDayX/go-metrics/internal/httpclient"
 	"github.com/OneDayX/go-metrics/internal/models"
+	"github.com/OneDayX/go-metrics/internal/realip"
 	"github.com/OneDayX/go-metrics/internal/sign"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -164,7 +167,7 @@ func (s *MetricService) CollectSystem(ctx context.Context) error {
 
 // Batch takes everything collected so far and turns the counter totals into
 // the increments the server expects. The metrics count as reported from here
-// on; Send gives them back if the report does not make it.
+// on; SendHTTP and SendGRPC give them back if the report does not make it.
 func (s *MetricService) Batch(ctx context.Context) []models.Metric {
 	metrics := s.storage.FetchAll(ctx)
 	if len(metrics) == 0 {
@@ -186,15 +189,17 @@ func (s *MetricService) Batch(ctx context.Context) []models.Metric {
 	return metrics
 }
 
-// Send reports one batch to the server in a single gzipped request to
-// POST /updates/. A non-empty key signs the uncompressed body. Workers call it
-// side by side, as many at a time as the rate limit allows.
-func (s *MetricService) Send(ctx context.Context, host, key string, metrics []models.Metric) error {
+// SendHTTP reports one batch to the server in a single gzipped request to
+// POST /updates/. A non-empty realIP goes in the X-Real-IP header. A non-empty
+// key signs the uncompressed body, a non-nil publicKey encrypts the compressed
+// one. Workers call it side by side, as many at a time as the rate limit
+// allows.
+func (s *MetricService) SendHTTP(ctx context.Context, host, realIP, key string, publicKey *rsa.PublicKey, metrics []models.Metric) error {
 	if len(metrics) == 0 {
 		return nil
 	}
 
-	if err := s.send(ctx, host, key, metrics); err != nil {
+	if err := s.send(ctx, host, realIP, key, publicKey, metrics); err != nil {
 		s.unreport(metrics)
 		return err
 	}
@@ -202,15 +207,23 @@ func (s *MetricService) Send(ctx context.Context, host, key string, metrics []mo
 	return nil
 }
 
-func (s *MetricService) send(ctx context.Context, host, key string, metrics []models.Metric) error {
+func (s *MetricService) send(ctx context.Context, host, realIP, key string, publicKey *rsa.PublicKey, metrics []models.Metric) error {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return err
 	}
 
-	compressed, err := compress.Encode(body)
+	payload, err := compress.Encode(body)
 	if err != nil {
 		return err
+	}
+
+	// Encrypted bytes look random and do not compress, so compression goes first.
+	if publicKey != nil {
+		payload, err = crypt.Encrypt(payload, publicKey)
+		if err != nil {
+			return err
+		}
 	}
 
 	// The server checks the signature after decompressing, so it covers the JSON.
@@ -219,7 +232,7 @@ func (s *MetricService) send(ctx context.Context, host, key string, metrics []mo
 		signature = sign.Sum(body, key)
 	}
 
-	return s.post(ctx, host, compressed, signature)
+	return s.post(ctx, host, realIP, payload, signature)
 }
 
 // unreport takes the increments of a batch that never arrived back, so that
@@ -236,13 +249,16 @@ func (s *MetricService) unreport(metrics []models.Metric) {
 }
 
 // post sends one gzipped batch. Repeating a failed attempt is the client's job.
-func (s *MetricService) post(ctx context.Context, host string, body []byte, signature string) error {
+func (s *MetricService) post(ctx context.Context, host, realIP string, body []byte, signature string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/updates/", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
+	if realIP != "" {
+		req.Header.Set(realip.Header, realIP)
+	}
 	if signature != "" {
 		req.Header.Set(sign.Header, signature)
 	}
