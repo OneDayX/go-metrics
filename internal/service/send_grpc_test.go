@@ -6,6 +6,7 @@ import (
 
 	"github.com/OneDayX/go-metrics/internal/models"
 	pb "github.com/OneDayX/go-metrics/internal/proto"
+	"github.com/OneDayX/go-metrics/internal/realip"
 	"github.com/OneDayX/go-metrics/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ type testMetricsClient struct {
 func (c *testMetricsClient) UpdateMetrics(ctx context.Context, in *pb.UpdateMetricsRequest, _ ...grpc.CallOption) (*pb.UpdateMetricsResponse, error) {
 	c.req = in
 	md, _ := metadata.FromOutgoingContext(ctx)
-	c.realIP = md.Get("x-real-ip")
+	c.realIP = md.Get(realip.MetadataKey)
 
 	return &pb.UpdateMetricsResponse{}, c.err
 }

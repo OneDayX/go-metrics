@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/OneDayX/go-metrics/internal/realip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,7 @@ func TestTrustedSubnet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/updates", nil)
 			if tt.realIP != "" {
-				req.Header.Set(realIPHeader, tt.realIP)
+				req.Header.Set(realip.Header, tt.realIP)
 			}
 
 			rr := httptest.NewRecorder()

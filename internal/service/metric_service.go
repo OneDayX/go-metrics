@@ -18,6 +18,7 @@ import (
 	"github.com/OneDayX/go-metrics/internal/crypt"
 	"github.com/OneDayX/go-metrics/internal/httpclient"
 	"github.com/OneDayX/go-metrics/internal/models"
+	"github.com/OneDayX/go-metrics/internal/realip"
 	"github.com/OneDayX/go-metrics/internal/sign"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -166,7 +167,7 @@ func (s *MetricService) CollectSystem(ctx context.Context) error {
 
 // Batch takes everything collected so far and turns the counter totals into
 // the increments the server expects. The metrics count as reported from here
-// on; Send gives them back if the report does not make it.
+// on; SendHTTP and SendGRPC give them back if the report does not make it.
 func (s *MetricService) Batch(ctx context.Context) []models.Metric {
 	metrics := s.storage.FetchAll(ctx)
 	if len(metrics) == 0 {
@@ -188,12 +189,12 @@ func (s *MetricService) Batch(ctx context.Context) []models.Metric {
 	return metrics
 }
 
-// Send reports one batch to the server in a single gzipped request to
+// SendHTTP reports one batch to the server in a single gzipped request to
 // POST /updates/. A non-empty realIP goes in the X-Real-IP header. A non-empty
 // key signs the uncompressed body, a non-nil publicKey encrypts the compressed
 // one. Workers call it side by side, as many at a time as the rate limit
 // allows.
-func (s *MetricService) Send(ctx context.Context, host, realIP, key string, publicKey *rsa.PublicKey, metrics []models.Metric) error {
+func (s *MetricService) SendHTTP(ctx context.Context, host, realIP, key string, publicKey *rsa.PublicKey, metrics []models.Metric) error {
 	if len(metrics) == 0 {
 		return nil
 	}
@@ -256,7 +257,7 @@ func (s *MetricService) post(ctx context.Context, host, realIP string, body []by
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 	if realIP != "" {
-		req.Header.Set("X-Real-IP", realIP)
+		req.Header.Set(realip.Header, realIP)
 	}
 	if signature != "" {
 		req.Header.Set(sign.Header, signature)

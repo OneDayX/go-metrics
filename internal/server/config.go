@@ -3,10 +3,8 @@ package server
 
 import (
 	"crypto/rsa"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"time"
@@ -19,7 +17,7 @@ import (
 const defaultStoreIntervalSeconds = 300
 
 // Config holds the server settings. The json tags are the keys of the config
-// file; the store interval is read from it in loadFile.
+// file; the store interval is read from it by config.LoadFile.
 type Config struct {
 	ServerAddr      string `env:"ADDRESS" json:"address"`              // host:port to listen on
 	LogFile         string `env:"LOG_FILE" json:"log_file"`            // logs go to stdout if empty
@@ -44,20 +42,26 @@ type Config struct {
 	// HTTP one; gRPC is off if the value is empty.
 	GRPCAddr string `env:"GRPC_ADDRESS" json:"grpc_address"`
 
-	// Filled in GetConfig: the flag and STORE_INTERVAL carry bare seconds,
-	// which env.Parse cannot read into a duration. Zero means synchronous saving.
+	// Filled in Parse: the flag and STORE_INTERVAL carry bare seconds, which
+	// env.Parse cannot read into a duration. Zero means synchronous saving.
 	StoreInterval time.Duration `env:"-" json:"-"`
-	// PrivateKey is loaded from CryptoKey in GetConfig; nil if CryptoKey is empty.
+	// PrivateKey is loaded from CryptoKey in Parse; nil if CryptoKey is empty.
 	PrivateKey *rsa.PrivateKey `env:"-" json:"-"`
-	// TrustedNet is parsed from TrustedSubnet in GetConfig; nil if it is empty.
+	// TrustedNet is parsed from TrustedSubnet in Parse; nil if it is empty.
 	TrustedNet *net.IPNet `env:"-" json:"-"`
 }
 
-// GetConfig reads the config from the JSON file, the command line flags and
-// the environment variables; a flag wins over the file and a variable wins
-// over its flag. The file is set with -c/-config or CONFIG. It stops the
-// program if a value is invalid.
-func GetConfig() Config {
+// GetConfig reads the config of this run: Parse with the command line
+// arguments.
+func GetConfig() (Config, error) {
+	return Parse(os.Args[1:])
+}
+
+// Parse reads the config from the JSON file, the flags in args and the
+// environment variables; a flag wins over the file and a variable wins over
+// its flag. The file is set with -c/-config or CONFIG. It fails if a value is
+// invalid.
+func Parse(args []string) (Config, error) {
 	cfg := Config{
 		ServerAddr:      "localhost:8080",
 		LogFile:         "",
@@ -67,59 +71,58 @@ func GetConfig() Config {
 	}
 
 	storeInterval := struct {
-		Seconds int `env:"STORE_INTERVAL"`
+		Seconds int64 `env:"STORE_INTERVAL"`
 	}{Seconds: defaultStoreIntervalSeconds}
 
 	// The file is read before the flags are registered: its values become the
 	// flag defaults, so a flag on the command line wins over the file.
-	configFile := config.FilePath(os.Args[1:])
+	configFile := config.FilePath(args)
 	if configFile != "" {
-		if err := loadFile(configFile, &cfg, &storeInterval.Seconds); err != nil {
-			log.Fatalf("failed to read the config file %s: %v", configFile, err)
+		err := config.LoadFile(configFile, &cfg, map[string]*int64{"store_interval": &storeInterval.Seconds})
+		if err != nil {
+			return Config{}, fmt.Errorf("read the config file %s: %w", configFile, err)
 		}
 	}
 
-	flag.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
-	flag.IntVar(&storeInterval.Seconds, "i", storeInterval.Seconds, "store interval in seconds (0 for sync)")
-	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "path to file storage")
-	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore metrics from file on startup")
-	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database connection string (postgres DSN)")
-	flag.StringVar(&cfg.Key, "k", cfg.Key, "key to check and sign bodies with (off if empty)")
-	flag.StringVar(&cfg.LogFile, "l", cfg.LogFile, "path to log file (stdout if empty)")
-	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "file to append audit events to (off if empty)")
-	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
-	flag.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
-	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
-	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "trusted subnet of the agents in CIDR (any agent if empty)")
-	flag.StringVar(&cfg.GRPCAddr, "grpc", cfg.GRPCAddr, "gRPC server address (host:port, off if empty)")
-	// Already read by config.FilePath; registered last, so that flag.Parse
+	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+	fs.StringVar(&cfg.ServerAddr, "a", cfg.ServerAddr, "server address (host:port)")
+	fs.Int64Var(&storeInterval.Seconds, "i", storeInterval.Seconds, "store interval in seconds (0 for sync)")
+	fs.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "path to file storage")
+	fs.BoolVar(&cfg.Restore, "r", cfg.Restore, "restore metrics from file on startup")
+	fs.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "database connection string (postgres DSN)")
+	fs.StringVar(&cfg.Key, "k", cfg.Key, "key to check and sign bodies with (off if empty)")
+	fs.StringVar(&cfg.LogFile, "l", cfg.LogFile, "path to log file (stdout if empty)")
+	fs.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "file to append audit events to (off if empty)")
+	fs.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL to post audit events to (off if empty)")
+	fs.StringVar(&cfg.PprofAddr, "pprof", cfg.PprofAddr, "address for the pprof server (off if empty)")
+	fs.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "path to the private key in PEM to decrypt bodies with (off if empty)")
+	fs.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "trusted subnet of the agents in CIDR (any agent if empty)")
+	fs.StringVar(&cfg.GRPCAddr, "grpc", cfg.GRPCAddr, "gRPC server address (host:port, off if empty)")
+	// Already read by config.FilePath; registered last, so that fs.Parse
 	// accepts them and the usage lists them.
-	flag.StringVar(&configFile, "c", configFile, "path to the JSON config file")
-	flag.StringVar(&configFile, "config", configFile, "path to the JSON config file (same as -c)")
-	flag.Parse()
+	fs.StringVar(&configFile, "c", configFile, "path to the JSON config file")
+	fs.StringVar(&configFile, "config", configFile, "path to the JSON config file (same as -c)")
+	if err := fs.Parse(args); err != nil {
+		return Config{}, err
+	}
 
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("failed to parse environment variables: %v", err)
+		return Config{}, fmt.Errorf("parse environment variables: %w", err)
 	}
 	if err := env.Parse(&storeInterval); err != nil {
-		log.Fatalf("failed to parse environment variables: %v", err)
+		return Config{}, fmt.Errorf("parse environment variables: %w", err)
 	}
 
 	// A negative interval would panic in time.NewTicker.
 	if storeInterval.Seconds < 0 {
-		log.Fatalf("store interval must not be negative, got %d", storeInterval.Seconds)
+		return Config{}, fmt.Errorf("store interval must not be negative, got %d", storeInterval.Seconds)
 	}
-
-	interval, err := time.ParseDuration(fmt.Sprintf("%ds", storeInterval.Seconds))
-	if err != nil {
-		log.Fatalf("failed to parse store interval: %v", err)
-	}
-	cfg.StoreInterval = interval
+	cfg.StoreInterval = time.Duration(storeInterval.Seconds) * time.Second
 
 	if cfg.CryptoKey != "" {
 		key, err := crypt.LoadPrivateKey(cfg.CryptoKey)
 		if err != nil {
-			log.Fatalf("failed to load the private key from %s: %v", cfg.CryptoKey, err)
+			return Config{}, fmt.Errorf("load the private key from %s: %w", cfg.CryptoKey, err)
 		}
 		cfg.PrivateKey = key
 	}
@@ -127,40 +130,10 @@ func GetConfig() Config {
 	if cfg.TrustedSubnet != "" {
 		_, subnet, err := net.ParseCIDR(cfg.TrustedSubnet)
 		if err != nil {
-			log.Fatalf("failed to parse the trusted subnet %s: %v", cfg.TrustedSubnet, err)
+			return Config{}, fmt.Errorf("parse the trusted subnet %s: %w", cfg.TrustedSubnet, err)
 		}
 		cfg.TrustedNet = subnet
 	}
 
-	return cfg
-}
-
-// loadFile reads the JSON config file into cfg; keys missing from the file
-// keep the values cfg already has. The file has the store interval as a
-// duration like "1s", it is saved to storeSeconds in whole seconds, the way
-// the flag carries it.
-func loadFile(path string, cfg *Config, storeSeconds *int) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, cfg); err != nil {
-		return err
-	}
-
-	var file struct {
-		StoreInterval string `json:"store_interval"`
-	}
-	if err := json.Unmarshal(data, &file); err != nil {
-		return err
-	}
-	if file.StoreInterval != "" {
-		interval, err := time.ParseDuration(file.StoreInterval)
-		if err != nil {
-			return fmt.Errorf("store_interval: %w", err)
-		}
-		*storeSeconds = int(interval / time.Second)
-	}
-
-	return nil
+	return cfg, nil
 }

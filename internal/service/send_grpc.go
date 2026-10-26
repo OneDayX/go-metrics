@@ -5,6 +5,7 @@ import (
 
 	"github.com/OneDayX/go-metrics/internal/models"
 	pb "github.com/OneDayX/go-metrics/internal/proto"
+	"github.com/OneDayX/go-metrics/internal/realip"
 	"github.com/OneDayX/go-metrics/internal/retry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -12,8 +13,8 @@ import (
 )
 
 // SendGRPC reports one batch to the server in a single UpdateMetrics call. A
-// non-empty realIP goes in the x-real-ip metadata. Like Send, it repeats the
-// call while the server cannot be reached and gives the increments back if
+// non-empty realIP goes in the x-real-ip metadata. Like SendHTTP, it repeats
+// the call while the server cannot be reached and gives the increments back if
 // the batch does not make it.
 func (s *MetricService) SendGRPC(ctx context.Context, client pb.MetricsClient, realIP string, metrics []models.Metric) error {
 	if len(metrics) == 0 {
@@ -21,7 +22,7 @@ func (s *MetricService) SendGRPC(ctx context.Context, client pb.MetricsClient, r
 	}
 
 	if realIP != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, "x-real-ip", realIP)
+		ctx = metadata.AppendToOutgoingContext(ctx, realip.MetadataKey, realIP)
 	}
 
 	req := &pb.UpdateMetricsRequest{Metrics: toProto(metrics)}

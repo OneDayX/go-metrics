@@ -3,7 +3,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -35,8 +37,9 @@ func New(cfg Config, svc *service.MetricService) *Agent {
 
 // Run collects and sends metrics until ctx is cancelled. Then it sends what
 // was collected since the last report and waits for the requests in flight,
-// giving them shutdownTimeout. It returns an error only if the very first poll
-// fails or the gRPC client cannot be created.
+// giving them shutdownTimeout. It returns an error only if it cannot start:
+// the very first poll fails, the gRPC client cannot be created or the address
+// of the host cannot be found.
 func (a *Agent) Run(ctx context.Context) error {
 	// Poll once right away, so the first report has something to send.
 	if err := a.svc.Collect(ctx); err != nil {
@@ -45,6 +48,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// With a gRPC address the workers share one connection; it is closed
 	// after they are done. A nil client means HTTP.
+	serverAddr := a.cfg.ServerAddr
 	var client pb.MetricsClient
 	if a.cfg.GRPCAddr != "" {
 		conn, err := grpc.NewClient(a.cfg.GRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -53,7 +57,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		defer func() { _ = conn.Close() }()
 
+		serverAddr = a.cfg.GRPCAddr
 		client = pb.NewMetricsClient(conn)
+	}
+
+	// Every batch carries the agent's address, so that the server can check
+	// its subnet.
+	realIP, err := hostIP(serverAddr)
+	if err != nil {
+		return fmt.Errorf("find the host address: %w", err)
 	}
 
 	var pollers sync.WaitGroup
@@ -85,7 +97,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		senders.Add(1)
 		go func() {
 			defer senders.Done()
-			a.send(sendCtx, client, batches)
+			a.send(sendCtx, client, realIP, batches)
 		}()
 	}
 
@@ -144,17 +156,29 @@ func (a *Agent) handOff(ctx context.Context, batches chan<- []models.Metric) {
 
 // send is one worker of the pool: it sends the batches it is given, one at a
 // time, until Run closes the channel. They go over gRPC if client is not nil.
-func (a *Agent) send(ctx context.Context, client pb.MetricsClient, batches <-chan []models.Metric) {
+func (a *Agent) send(ctx context.Context, client pb.MetricsClient, realIP string, batches <-chan []models.Metric) {
 	for batch := range batches {
 		var err error
 		if client != nil {
-			err = a.svc.SendGRPC(ctx, client, a.cfg.RealIP, batch)
+			err = a.svc.SendGRPC(ctx, client, realIP, batch)
 		} else {
-			err = a.svc.Send(ctx, a.cfg.ServerAddr, a.cfg.RealIP, a.cfg.Key, a.cfg.PublicKey, batch)
+			err = a.svc.SendHTTP(ctx, a.cfg.ServerAddr, realIP, a.cfg.Key, a.cfg.PublicKey, batch)
 		}
 
 		if err != nil {
 			log.Printf("error sending metrics: %v", err)
 		}
 	}
+}
+
+// hostIP returns the address of the interface the agent reaches the server
+// through. Dialing UDP sends nothing, it only picks the route.
+func hostIP(serverAddr string) (string, error) {
+	conn, err := net.Dial("udp", serverAddr)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = conn.Close() }()
+
+	return conn.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }

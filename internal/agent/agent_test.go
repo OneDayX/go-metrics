@@ -83,7 +83,8 @@ func TestAgentRunSendsOnShutdown(t *testing.T) {
 
 func TestAgentRunGRPC(t *testing.T) {
 	// The server takes metrics only from the trusted subnet, so the batches
-	// get through only with the agent's address in the metadata.
+	// get through only with the agent's address in the metadata. The server
+	// is on 127.0.0.1, so the agent finds its address there too.
 	_, subnet, err := net.ParseCIDR("127.0.0.0/8")
 	require.NoError(t, err)
 
@@ -97,7 +98,6 @@ func TestAgentRunGRPC(t *testing.T) {
 
 	cfg := Config{
 		GRPCAddr:       listener.Addr().String(),
-		RealIP:         "127.0.0.1",
 		RateLimit:      1,
 		PollInterval:   10 * time.Millisecond,
 		ReportInterval: 10 * time.Millisecond,

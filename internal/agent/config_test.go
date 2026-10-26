@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"flag"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,52 +10,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// writeConfig saves a config file and returns its path.
-func writeConfig(t *testing.T, data string) string {
-	t.Helper()
+func TestParse(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.json")
-	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
-	return path
-}
-
-// setArgs replaces the command line and the flag set that GetConfig uses.
-func setArgs(t *testing.T, args ...string) {
-	t.Helper()
-	oldArgs, oldFlags := os.Args, flag.CommandLine
-	t.Cleanup(func() { os.Args, flag.CommandLine = oldArgs, oldFlags })
-
-	os.Args = args
-	flag.CommandLine = flag.NewFlagSet(args[0], flag.ExitOnError)
-}
-
-func TestGetConfig(t *testing.T) {
-	path := writeConfig(t, `{
+	require.NoError(t, os.WriteFile(path, []byte(`{
 		"poll_interval": "5s",
 		"report_interval": "20s",
 		"rate_limit": 3,
 		"key": "file-key",
 		"grpc_address": "localhost:3200"
-	}`)
+	}`), 0o600))
 
 	// The flag wins over the file, the variable wins over both.
-	setArgs(t, "agent", "-r", "30")
 	t.Setenv("CONFIG", path)
 	t.Setenv("KEY", "env-key")
 
-	cfg := GetConfig()
+	cfg, err := Parse([]string{"-r", "30"})
+	require.NoError(t, err)
 
 	assert.Equal(t, 5*time.Second, cfg.PollInterval)
 	assert.Equal(t, 30*time.Second, cfg.ReportInterval)
 	assert.Equal(t, 3, cfg.RateLimit)
 	assert.Equal(t, "env-key", cfg.Key)
 	assert.Equal(t, "localhost:3200", cfg.GRPCAddr)
-	assert.True(t, net.ParseIP(cfg.RealIP).IsLoopback(), "the server is on localhost")
 }
 
-func TestLoadFileError(t *testing.T) {
-	path := writeConfig(t, `{"poll_interval": "often"}`)
-	var poll, report int64
+func TestParseRateLimit(t *testing.T) {
+	t.Setenv("CONFIG", "")
 
-	err := loadFile(path, &Config{}, &poll, &report)
-	assert.Error(t, err)
+	_, err := Parse([]string{"-l", "0"})
+	assert.Error(t, err, "no workers would read the batches")
 }

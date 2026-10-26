@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os/signal"
@@ -26,7 +28,8 @@ var (
 func main() {
 	printBuildInfo()
 
-	if err := run(); err != nil {
+	// ErrHelp means -h printed the usage, which is not a failure.
+	if err := run(); err != nil && !errors.Is(err, flag.ErrHelp) {
 		log.Fatal(err)
 	}
 }
@@ -39,7 +42,10 @@ func printBuildInfo() {
 }
 
 func run() error {
-	cfg := agent.GetConfig()
+	cfg, err := agent.GetConfig()
+	if err != nil {
+		return err
+	}
 
 	// ctx is cancelled on SIGINT/SIGTERM/SIGQUIT; the agent then sends what it
 	// has collected and exits.

@@ -5,6 +5,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/OneDayX/go-metrics/internal/realip"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -33,7 +34,7 @@ func TestTrustedSubnet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			if tt.realIP != "" {
-				ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(realIPKey, tt.realIP))
+				ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(realip.MetadataKey, tt.realIP))
 			}
 
 			_, err := TrustedSubnet(subnet)(ctx, nil, nil, handler)
